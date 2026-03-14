@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pquick AR Core
  * Description: מערכת הליבה לניהול אירועי Pquick AR. כולל יצירת אירועים, מחולל QR, העלאת מסגרות ו-API, וממשקי Frontend.
- * Version: 3.0.0
+ * Version: 3.1.0
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -106,7 +106,7 @@ class Pquick_AR_Core {
             echo '<p style="color: #d63638;">יש לשמור/לפרסם את האירוע כדי לחולל קוד QR וקישורים.</p>'; return;
         }
 
-        // שינוי קריטי: הקישורים כעת משתמשים בפרמטר ?pquick_app= כדי למנוע שגיאות 404
+        // הקישורים משתמשים בפרמטר ?pquick_app= כדי למנוע שגיאות 404
         $site_url = get_site_url();
         $guest_url = add_query_arg( array( 'pquick_app' => 'upload', 'event_id' => $post->ID ), $site_url );
         $operator_url = add_query_arg( array( 'pquick_app' => 'operator', 'event_id' => $post->ID ), $site_url );
@@ -265,14 +265,18 @@ class Pquick_AR_Core {
                 .preview-overlay-dynamic { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 2; pointer-events: none; object-fit: cover; }
                 @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
                 .btn-magic-contact { background: linear-gradient(270deg, #ffb800, #ff7a7b, #9ad7cf, #ffb800); background-size: 300% 300%; animation: gradientShift 4s ease infinite; color: white; text-shadow: 0px 1px 2px rgba(0,0,0,0.2); }
-                .loader { border: 4px solid #f3f3f3; border-top: 4px solid #ffb800; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto; }
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                
+                /* עיצוב בר התקדמות */
+                .progress-container { width: 100%; background-color: #e5e7eb; border-radius: 9999px; height: 12px; overflow: hidden; margin-top: 15px; }
+                .progress-bar { height: 100%; background-color: #ffb800; width: 0%; transition: width 0.3s ease; border-radius: 9999px; }
             </style>
         </head>
         <body class="text-pquick-dark">
         <div class="app-container relative">
             <header class="p-4 flex justify-center items-center border-b border-gray-100 sticky top-0 bg-white z-10">
-                <div class="flex-col items-center leading-none flex">
+                <!-- שימוש בלוגו האמיתי מהאתר שלך -->
+                <img src="https://pquick.co.il/wp-content/uploads/2023/05/Pquick-Logo-1.png" alt="Pquick Events" class="h-10 object-contain" onerror="this.style.display='none'; document.getElementById('fallback-logo').style.display='flex';">
+                <div id="fallback-logo" style="display: none;" class="flex-col items-center leading-none">
                     <span class="text-3xl font-bold text-pquick-dark">Pquick</span>
                     <span class="text-lg font-bold text-pquick-orange">Events</span>
                 </div>
@@ -341,15 +345,47 @@ class Pquick_AR_Core {
                 </div>
 
                 <div id="step-loading" class="step items-center justify-center">
-                    <div class="text-center"><div class="loader mb-4"></div><h2 class="text-xl font-bold">מעבד קסמים...</h2><p class="text-gray-500">מעלה תמונה ווידאו לשרת Pquick</p></div>
+                    <div class="text-center w-full max-w-xs mx-auto">
+                        <i class="fa-solid fa-cloud-arrow-up text-5xl text-pquick-orange mb-4 animate-bounce"></i>
+                        <h2 class="text-xl font-bold">יוצר את הקסם...</h2>
+                        <p class="text-gray-500 text-sm mt-2">מעלה תמונה ווידאו, אנא המתן</p>
+                        
+                        <!-- בר התקדמות חדש -->
+                        <div class="progress-container">
+                            <div id="upload-progress-bar" class="progress-bar"></div>
+                        </div>
+                        <p id="upload-progress-text" class="text-pquick-dark font-bold mt-2">0%</p>
+                    </div>
                 </div>
 
-                <div id="step-success" class="step items-center justify-center text-center">
-                    <div class="w-24 h-24 bg-pquick-lightgreen rounded-full flex items-center justify-center mx-auto mb-6 text-pquick-dark text-4xl shadow-md"><i class="fa-solid fa-check"></i></div>
-                    <h1 class="text-3xl font-bold mb-2">מושלם!</h1>
-                    <p class="text-gray-600 mb-8 leading-relaxed">התמונה נשלחה בהצלחה לעמדת ההדפסה.</p>
-                    <button onclick="location.reload()" class="text-pquick-dark font-bold underline hover:text-pquick-pink transition-colors mb-8">העלה תמונה נוספת</button>
-                    <div class="mt-2 w-full flex flex-col items-center">
+                <div id="step-success" class="step text-center">
+                    <div class="w-20 h-20 bg-pquick-lightgreen rounded-full flex items-center justify-center mx-auto mb-4 text-pquick-dark text-4xl shadow-md mt-4"><i class="fa-solid fa-check"></i></div>
+                    <h1 class="text-2xl font-bold mb-2">התמונה נשלחה להדפסה!</h1>
+                    
+                    <!-- הוראות ברורות למשתמש -->
+                    <div class="bg-pquick-light rounded-xl p-5 text-right my-6 border border-gray-200 shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 text-center border-b border-gray-200 pb-2">מה עושים עכשיו?</h3>
+                        <ul class="space-y-4">
+                            <li class="flex items-start gap-3">
+                                <div class="bg-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-pquick-orange shrink-0 shadow-sm">1</div>
+                                <div><span class="font-bold">גשו לעמדת ההדפסה</span> וקחו את התמונה המוכנה שלכם.</div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <div class="bg-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-pquick-orange shrink-0 shadow-sm">2</div>
+                                <div><span class="font-bold">סרקו את ה-QR</span> שעל גבי התמונה (או בעמדה) כדי לפתוח את סורק הקסם.</div>
+                            </li>
+                            <li class="flex items-start gap-3">
+                                <div class="bg-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-pquick-orange shrink-0 shadow-sm">3</div>
+                                <div><span class="font-bold">כוונו את המצלמה</span> אל התמונה המודפסת וראו איך היא מתעוררת לחיים!</div>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <button onclick="location.reload()" class="w-full bg-white border-2 border-pquick-dark text-pquick-dark font-bold py-3 rounded-full hover:bg-gray-50 mb-6 transition-colors">
+                        העלה תמונה נוספת
+                    </button>
+
+                    <div class="mt-auto border-t border-gray-200 pt-4 w-full flex flex-col items-center pb-4">
                         <p class="text-gray-500 text-sm mb-2 font-medium">רוצים את הקסם הזה גם באירוע שלכם?</p>
                         <a href="https://pquick.co.il/events/" target="_blank" class="btn-magic-contact inline-flex items-center justify-center font-bold py-2.5 px-8 rounded-full text-sm transition-transform hover:scale-105 shadow-lg"><i class="fa-solid fa-wand-magic-sparkles ml-2"></i> לפרטים והזמנות</a>
                     </div>
@@ -358,7 +394,6 @@ class Pquick_AR_Core {
         </div>
 
         <script>
-            // הזרקת נתונים דינמיים מוורדפרס ל-JS
             const EVENT_DATA = {
                 id: <?php echo intval($event_id); ?>,
                 name: "<?php echo esc_js($event_name); ?>",
@@ -369,7 +404,6 @@ class Pquick_AR_Core {
 
             const isSquare = EVENT_DATA.cropFormat === "square";
             
-            // מנגנון גיבוי אם אין מסגרת מוגדרת בוורדפרס
             if (!EVENT_DATA.overlayUrl) {
                 const svgWidth = 600; const svgHeight = 800;
                 let holePath = isSquare ? 'M30 30v540h540V30z' : 'M30 30v640h540V30z';
@@ -471,7 +505,7 @@ class Pquick_AR_Core {
                 document.getElementById('btn-to-preview').addEventListener('click', () => { if (hasImage && hasVideo) showStep('step-preview'); });
                 document.getElementById('btn-back').addEventListener('click', () => showStep('step-upload'));
 
-                // השליחה בפועל לוורדפרס!
+                // השליחה בפועל לוורדפרס - מעודכן עם בר התקדמות (XHR במקום Fetch)
                 document.getElementById('btn-submit').addEventListener('click', () => {
                     showStep('step-loading');
                     
@@ -483,17 +517,44 @@ class Pquick_AR_Core {
                         formData.append('video_file', inputVideo.files[0]);
                     }
 
-                    fetch('/wp-json/pquick/v1/upload', { method: 'POST', body: formData })
-                    .then(res => res.json())
-                    .then(data => {
-                        if(data.success) {
-                            showStep('step-success');
-                            if(typeof confetti !== 'undefined') confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#ffb800', '#9ad7cf', '#ff7a7b', '#454857'], zIndex: 100 });
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('POST', '/wp-json/pquick/v1/upload', true);
+
+                    // מעקב אחרי התקדמות ההעלאה
+                    xhr.upload.onprogress = function(e) {
+                        if (e.lengthComputable) {
+                            const percentComplete = Math.round((e.loaded / e.total) * 100);
+                            document.getElementById('upload-progress-bar').style.width = percentComplete + '%';
+                            document.getElementById('upload-progress-text').textContent = percentComplete + '%';
+                            
+                            if(percentComplete === 100) {
+                                document.getElementById('upload-progress-text').textContent = "מעבד קבצים, אנא המתן...";
+                            }
+                        }
+                    };
+
+                    xhr.onload = function() {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            const data = JSON.parse(xhr.responseText);
+                            if(data.success) {
+                                showStep('step-success');
+                                if(typeof confetti !== 'undefined') confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#ffb800', '#9ad7cf', '#ff7a7b', '#454857'], zIndex: 100 });
+                            } else {
+                                alert('שגיאה: ' + (data.message || 'לא הצלחנו לשמור, נסה שוב.'));
+                                showStep('step-preview');
+                            }
                         } else {
-                            alert('שגיאה: ' + (data.message || 'לא הצלחנו לשמור, נסה שוב.'));
+                            alert('שגיאת שרת. אנא נסה שוב מאוחר יותר.');
                             showStep('step-preview');
                         }
-                    }).catch(err => { console.error(err); alert('שגיאת תקשורת, בדוק חיבור לאינטרנט.'); showStep('step-preview'); });
+                    };
+
+                    xhr.onerror = function() {
+                        alert('שגיאת תקשורת, בדוק חיבור לאינטרנט.');
+                        showStep('step-preview');
+                    };
+
+                    xhr.send(formData);
                 });
             });
         </script>
@@ -625,9 +686,7 @@ class Pquick_AR_Core {
             }
 
             window.printItem = async function(id, imageUrl) {
-                // במערכת אמיתית פה תיפתח תיבת ההדפסה של הדפדפן לתמונה הזו
                 window.open(imageUrl, '_blank');
-                
                 const itemIndex = uploadsData.findIndex(item => item.id == id);
                 if (itemIndex > -1) {
                     uploadsData[itemIndex].status = 'printed';
