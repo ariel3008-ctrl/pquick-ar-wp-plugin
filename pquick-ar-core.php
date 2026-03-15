@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pquick AR Core
  * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב.
- * Version: 16.0.0
+ * Version: 16.0.1
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -20,11 +20,28 @@ class Pquick_AR_Core {
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
         add_action( 'rest_api_init', array( $this, 'register_rest_endpoints' ) );
         add_action( 'template_redirect', array( $this, 'render_frontend_apps' ) );
+        
+        // אישור העלאת קבצי SVG למערכת עבור הלוגואים
+        add_filter( 'upload_mimes', array( $this, 'allow_svg_uploads' ) );
+    }
+
+    public function allow_svg_uploads( $mimes ) {
+        $mimes['svg'] = 'image/svg+xml';
+        return $mimes;
     }
 
     public function enqueue_admin_scripts( $hook ) {
-        global $typenow;
-        if ( $typenow == 'pquick_event' ) {
+        global $post, $typenow;
+        
+        // תיקון זיהוי סוג הפוסט גם בעת יצירת אירוע חדש לגמרי
+        $type = $typenow;
+        if (empty($type) && !empty($post)) {
+            $type = $post->post_type;
+        } elseif (empty($type) && isset($_GET['post_type'])) {
+            $type = $_GET['post_type'];
+        }
+
+        if ( $type == 'pquick_event' ) {
             wp_enqueue_media();
         }
     }
@@ -77,13 +94,10 @@ class Pquick_AR_Core {
         <div style="display: flex; gap: 20px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 350px;">
                 <label><strong>יחס חיתוך לתמונת האורח (Cropper):</strong></label><br>
-                <span style="font-size: 12px; color: #666;">זוהי צורת החיתוך במובייל (ללא קשר למסגרת). המסגרת עצמה תמיד תוצג בשלמותה.</span>
+                <span style="font-size: 12px; color: #666;">המסגרת תמיד תוצג כמלבן עומד. ההגדרה כאן קובעת רק את צורת החיתוך שתתלבש באזור השקוף.</span>
                 <select name="pquick_print_format" id="pquick_print_format" style="width: 100%; margin-top: 5px; margin-bottom: 15px; padding: 8px;">
-                    <option value="1" <?php selected( $print_format, '1' ); ?>>ריבוע (1:1)</option>
-                    <option value="0.75" <?php selected( $print_format, '0.75' ); ?>>מלבן עומד לאורך (3:4)</option>
-                    <option value="0.666" <?php selected( $print_format, '0.666' ); ?>>מלבן עומד (2:3)</option>
-                    <option value="1.333" <?php selected( $print_format, '1.333' ); ?>>מלבן שוכב לרוחב (4:3)</option>
-                    <option value="1.5" <?php selected( $print_format, '1.5' ); ?>>מלבן שוכב (3:2)</option>
+                    <option value="1" <?php selected( $print_format, '1' ); ?>>מצב 1: חיתוך ריבוע (1:1)</option>
+                    <option value="0.75" <?php selected( $print_format, '0.75' ); ?>>מצב 2: חיתוך מלבן לאורך (3:4)</option>
                 </select>
 
                 <label><strong>מסגרת ממותגת (Overlay - קובץ PNG שקוף):</strong></label><br>
