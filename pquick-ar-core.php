@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pquick AR Core
  * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב.
- * Version: 16.0.1
+ * Version: 16.0.2
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -391,6 +391,13 @@ class Pquick_AR_Core {
             <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b', light: '#f9f9f9' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
+                
+                // --- פקודת דיבאג חכמה לקונסולה ---
+                console.log("=== Pquick App Debug ===");
+                console.log("App Type:", "Guest Upload");
+                console.log("Has Logo:", <?php echo $has_logo ? 'true' : 'false'; ?>);
+                console.log("Logo URL from DB:", "<?php echo esc_js($logo_url); ?>");
+                console.log("=========================");
             </script>
             <style>
                 body { background-color: #f5f5f5; -webkit-tap-highlight-color: transparent; }
@@ -715,7 +722,16 @@ class Pquick_AR_Core {
             <script src="https://cdn.tailwindcss.com"></script>
             <link href="https://fonts.googleapis.com/css2?family=Alef:wght@400;700&display=swap" rel="stylesheet">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-            <script>tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }</script>
+            <script>
+                tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
+                
+                // --- פקודת דיבאג חכמה לקונסולה ---
+                console.log("=== Pquick App Debug ===");
+                console.log("App Type:", "Operator Dashboard");
+                console.log("Has Logo:", <?php echo $has_logo ? 'true' : 'false'; ?>);
+                console.log("Logo URL from DB:", "<?php echo esc_js($logo_url); ?>");
+                console.log("=========================");
+            </script>
             <style>
                 body { background-color: #f0f2f5; }
                 ::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-track { background: #f1f1f1; } ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -940,6 +956,14 @@ class Pquick_AR_Core {
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
             <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+            <script>
+                // --- פקודת דיבאג חכמה לקונסולה ---
+                console.log("=== Pquick App Debug ===");
+                console.log("App Type:", "AR Scanner");
+                console.log("Has Logo:", <?php echo $has_logo ? 'true' : 'false'; ?>);
+                console.log("Logo URL from DB:", "<?php echo esc_js($logo_url); ?>");
+                console.log("=========================");
+            </script>
             <style>
                 body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Alef', sans-serif;}
                 .a-enter-vr, .a-enter-ar { display: none !important; }
