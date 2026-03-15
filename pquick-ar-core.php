@@ -862,12 +862,15 @@ class Pquick_AR_Core {
                     <meta charset="UTF-8">
                     <title>הדפסת תמונה #${id}</title>
                     <style>
-                        @page { margin: 0; size: auto; }
-                        body { margin: 0; padding: 0; background: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+                        @page { margin: 0; }
+                        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: white; }
+                        body { display: flex; justify-content: center; align-items: center; }
                         
                         /* קונטיינר ההדפסה יתאים את עצמו לגודל הטבעי של מסגרת ה-PNG (Overlay) */
-                        .print-wrapper { position: relative; width: 100vw; height: 100vh; max-width: 100%; max-height: 100%; overflow: hidden; display: flex; justify-content: center; align-items: center;}
-                        .print-container { position: relative; width: 100%; max-width: 100vw; max-height: 100vh; overflow: hidden; display: inline-block; }
+                        .print-wrapper { position: relative; width: 100%; height: 100%; overflow: hidden; display: flex; justify-content: center; align-items: center;}
+                        
+                        /* ביטול מרווחים נסתרים בתחתית (line-height: 0) */
+                        .print-container { position: relative; max-width: 100%; max-height: 100%; overflow: hidden; display: block; line-height: 0; }
                         
                         /* המסגרת מכתיבה את הגודל ולעולם לא נחתכת */
                         .overlay { width: 100%; height: auto; max-height: 100vh; position: relative; z-index: 2; display: block; object-fit: contain; }
@@ -875,7 +878,10 @@ class Pquick_AR_Core {
                         /* תמונת האורח נמתחת על האחוזים שזוהו באזור השקוף */
                         .photo { position: absolute; width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%; object-fit: cover; z-index: 1; }
                         
-                        @media print { .print-wrapper { width: 100%; height: 100%; display: block; } }
+                        @media print { 
+                            html, body { overflow: hidden !important; }
+                            .print-wrapper { page-break-inside: avoid; page-break-after: avoid; }
+                        }
                     </style>
                 </head>
                 <body>
