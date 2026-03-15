@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Pquick AR Core
- * Description: מערכת הליבה. הלבשת תמונות מדויקת מאחורי מסגרות (המסגרת מכתיבה את הגודל ולעולם לא נחתכת), ולוגו יציב.
- * Version: 15.0.0
+ * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב.
+ * Version: 16.0.0
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -64,7 +64,7 @@ class Pquick_AR_Core {
         
         <!-- העלאת לוגו -->
         <div style="background: #fff; border: 1px solid #ccc; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
-            <label><strong>לוגו לאירוע (יוצג באפליקציות במקום שם המותג):</strong></label><br>
+            <label><strong>לוגו לאירוע (אם לא תעלה לוגו, יוצג שם המותג "Pquick Events" בטקסט):</strong></label><br>
             <div style="margin-top: 10px;">
                 <img id="pquick_logo_preview" src="<?php echo esc_url($logo_url); ?>" style="max-width: 200px; max-height: 80px; display: <?php echo $logo_url ? 'inline-block' : 'none'; ?>; margin-bottom: 10px; background:#f0f0f0; padding:10px; border-radius:4px;">
                 <br>
@@ -76,8 +76,8 @@ class Pquick_AR_Core {
 
         <div style="display: flex; gap: 20px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 350px;">
-                <label><strong>יחס חיתוך לתמונת האורח:</strong></label><br>
-                <span style="font-size: 12px; color: #666;">זוהי צורת החיתוך במובייל (ללא קשר למסגרת).</span>
+                <label><strong>יחס חיתוך לתמונת האורח (Cropper):</strong></label><br>
+                <span style="font-size: 12px; color: #666;">זוהי צורת החיתוך במובייל (ללא קשר למסגרת). המסגרת עצמה תמיד תוצג בשלמותה.</span>
                 <select name="pquick_print_format" id="pquick_print_format" style="width: 100%; margin-top: 5px; margin-bottom: 15px; padding: 8px;">
                     <option value="1" <?php selected( $print_format, '1' ); ?>>ריבוע (1:1)</option>
                     <option value="0.75" <?php selected( $print_format, '0.75' ); ?>>מלבן עומד לאורך (3:4)</option>
@@ -87,7 +87,7 @@ class Pquick_AR_Core {
                 </select>
 
                 <label><strong>מסגרת ממותגת (Overlay - קובץ PNG שקוף):</strong></label><br>
-                <span style="font-size: 12px; color: #666;">המסגרת תוצג תמיד בשלמותה ותשב מעל תמונת האורח.</span>
+                <span style="font-size: 12px; color: #666;">המסגרת תוצג תמיד ב-100% ללא חיתוך ותשב מעל תמונת האורח.</span>
                 <div style="margin-top: 10px; border: 2px dashed #ccc; padding: 15px; text-align: center; background: #f9f9f9; border-radius: 8px;">
                     <img id="pquick_overlay_preview" crossorigin="anonymous" src="<?php echo esc_url($overlay_url); ?>" style="max-width: 100%; max-height: 250px; display: <?php echo $overlay_url ? 'inline-block' : 'none'; ?>; margin: 0 auto 15px; background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAADFJREFUOE9jZGBgEGHAA8wMTAwMQHkGBgZcBpKAEWoAxhUDBmEAAwMPEDcT0kQDmFwEAIDxDwLz2t8+AAAAAElFTkSuQmCC) repeat; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
                     <br>
@@ -354,12 +354,14 @@ class Pquick_AR_Core {
         $max_copies = get_post_meta($event_id, '_pquick_max_copies', true) ?: 3;
         $print_format = get_post_meta($event_id, '_pquick_print_format', true) ?: '0.75';
         $overlay_url = get_post_meta($event_id, '_pquick_overlay_url', true);
-        $custom_logo = get_post_meta($event_id, '_pquick_event_logo', true);
         
         $photo_w = get_post_meta( $event_id, '_pquick_photo_w', true ) !== '' ? get_post_meta( $event_id, '_pquick_photo_w', true ) : '100';
         $photo_h = get_post_meta( $event_id, '_pquick_photo_h', true ) !== '' ? get_post_meta( $event_id, '_pquick_photo_h', true ) : '100';
         $photo_t = get_post_meta( $event_id, '_pquick_photo_t', true ) !== '' ? get_post_meta( $event_id, '_pquick_photo_t', true ) : '0';
         $photo_l = get_post_meta( $event_id, '_pquick_photo_l', true ) !== '' ? get_post_meta( $event_id, '_pquick_photo_l', true ) : '0';
+        
+        $logo_url = get_post_meta($event_id, '_pquick_event_logo', true);
+        $has_logo = ! empty( trim( $logo_url ) );
         ?>
         <!DOCTYPE html>
         <html lang="he" dir="rtl">
@@ -385,19 +387,16 @@ class Pquick_AR_Core {
                 .file-upload-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
                 .file-upload-wrapper input[type="file"] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; }
                 
-                /* הלבשה מוחלטת ללא חיתוך המסגרת */
-                .preview-frame { position: relative; width: 100%; overflow: hidden; background-color: #eee; box-shadow: 0 4px 15px rgba(69, 72, 87, 0.15); }
+                /* המסגרת לא נחתכת אף פעם (height: auto) */
+                .preview-frame { position: relative; width: 100%; background-color: #eee; overflow: hidden; box-shadow: 0 4px 15px rgba(69, 72, 87, 0.15); }
+                .preview-overlay-dynamic { width: 100%; height: auto; position: relative; z-index: 2; pointer-events: none; display: block; object-fit: contain; }
                 
-                /* קובץ המסגרת עצמו מכתיב את גובה התצוגה המקדימה - לעולם לא ייחתך */
-                .preview-overlay-dynamic { width: 100%; height: auto; position: relative; z-index: 2; pointer-events: none; display: block; }
-                
-                /* התמונה של המשתמש מולבשת מתחת, נמתחת על האחוזים שזוהו אוטומטית */
+                /* הלבשה טהורה וללא scale */
                 .preview-image { position: absolute; z-index: 1; object-fit: cover; 
                     width: <?php echo esc_attr($photo_w); ?>%; 
                     height: <?php echo esc_attr($photo_h); ?>%; 
                     top: <?php echo esc_attr($photo_t); ?>%; 
                     left: <?php echo esc_attr($photo_l); ?>%; 
-                    transform: scale(1.02); /* גלישת דפוס שמונעת פסים לבנים */
                 }
                 
                 .crop-container { width: 100%; height: 50vh; background-color: #000; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
@@ -410,10 +409,9 @@ class Pquick_AR_Core {
         <body class="text-pquick-dark">
         <div class="app-container relative">
             <header class="p-4 flex justify-center items-center border-b border-gray-100 sticky top-0 bg-white z-10 shadow-sm min-h-[70px]">
-                <?php if(!empty($custom_logo)): ?>
-                    <img src="<?php echo esc_url($custom_logo); ?>" alt="Logo" class="max-h-[45px] w-auto object-contain">
+                <?php if($has_logo): ?>
+                    <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" style="height: 40px; width: auto; object-fit: contain; display: block;">
                 <?php else: ?>
-                    <!-- שם המותג בטקסט כגיבוי בטוח -->
                     <div class="flex flex-col items-center justify-center leading-none">
                         <span class="text-3xl font-bold text-pquick-dark" style="font-family: 'Alef', sans-serif;">Pquick</span>
                         <span class="text-lg font-bold text-pquick-orange" style="font-family: 'Alef', sans-serif;">Events</span>
@@ -465,7 +463,6 @@ class Pquick_AR_Core {
                 <div id="step-preview" class="step">
                     <div class="text-center mb-4"><h2 class="text-xl font-bold">ככה זה ייראה באירוע!</h2></div>
                     <div class="preview-frame mx-auto mb-4 rounded-xl">
-                        <!-- הסדר חשוב: תמונה מאחור, מסגרת מקדימה -->
                         <img id="preview-img-element" class="preview-image" src="">
                         <img id="preview-overlay-element" class="preview-overlay-dynamic" src="">
                     </div>
@@ -595,6 +592,7 @@ class Pquick_AR_Core {
                             showStep('step-crop');
                             if (cropper) cropper.destroy();
                             
+                            // חיתוך אחד לאחד בדיוק לפי מה שהוגדר בוורדפרס.
                             cropper = new Cropper(imageToCropElement, {
                                 aspectRatio: EVENT_DATA.printFormat, 
                                 viewMode: 1, dragMode: 'move', autoCropArea: 1, guides: true, center: true, highlight: false, cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false
@@ -684,7 +682,10 @@ class Pquick_AR_Core {
     private function output_operator_app( $event_id ) {
         $event_name = get_the_title($event_id);
         $overlay_url = get_post_meta($event_id, '_pquick_overlay_url', true);
+        
         $custom_logo = get_post_meta($event_id, '_pquick_event_logo', true);
+        $logo_url = $custom_logo ? $custom_logo : '';
+        $has_logo = ! empty( trim( $logo_url ) );
         
         $photo_w = get_post_meta( $event_id, '_pquick_photo_w', true ) !== '' ? get_post_meta( $event_id, '_pquick_photo_w', true ) : '100';
         $photo_h = get_post_meta( $event_id, '_pquick_photo_h', true ) !== '' ? get_post_meta( $event_id, '_pquick_photo_h', true ) : '100';
@@ -711,11 +712,9 @@ class Pquick_AR_Core {
         <body class="text-pquick-dark h-screen flex flex-col overflow-hidden">
             <header class="bg-white shadow-sm border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 z-10 min-h-[70px]">
                 <div class="flex items-center gap-4">
-                    <?php if(!empty($custom_logo)): ?>
-                        <!-- תצוגת לוגו קשיחה לעמדת מפעיל -->
-                        <img src="<?php echo esc_url($custom_logo); ?>" alt="Logo" class="max-h-[40px] w-auto object-contain block">
+                    <?php if($has_logo): ?>
+                        <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" style="height: 40px; width: auto; object-fit: contain; display: block;">
                     <?php else: ?>
-                        <!-- תצוגת טקסט גיבוי -->
                         <div class="flex flex-col items-center justify-center leading-none">
                             <span class="text-2xl font-bold text-pquick-dark" style="font-family: 'Alef', sans-serif;">Pquick</span>
                             <span class="text-sm font-bold text-pquick-orange" style="font-family: 'Alef', sans-serif;">Events</span>
@@ -746,7 +745,6 @@ class Pquick_AR_Core {
             const EVENT_ID = <?php echo intval($event_id); ?>;
             const OVERLAY_URL = "<?php echo esc_js($overlay_url); ?>";
             
-            // תמונה מדויקת לתוך החור
             const LAYOUT = { w: <?php echo floatval($photo_w); ?>, h: <?php echo floatval($photo_h); ?>, t: <?php echo floatval($photo_t); ?>, l: <?php echo floatval($photo_l); ?> };
             
             let finalOverlay = OVERLAY_URL;
@@ -784,8 +782,8 @@ class Pquick_AR_Core {
                 const container = document.getElementById('content-container');
                 if(uploadsData.length === 0) { container.innerHTML = '<p class="text-center text-gray-500 mt-10">אין תמונות עדיין. ממתין לאורחים...</p>'; return; }
                 
-                // הלבשה כירורגית למפעיל בדומה לתצוגה המקדימה
-                const dynamicImgStyle = `width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%; transform: scale(1.02);`;
+                // הלבשה נקייה למפעיל - ללא Scale
+                const dynamicImgStyle = `width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%;`;
 
                 let html = '';
                 if (currentView === 'grid') {
@@ -797,9 +795,9 @@ class Pquick_AR_Core {
                                 <div class="absolute top-2 right-2 bg-pquick-dark text-white font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-md z-30 border-2 border-white">${item.copies}x</div>
                                 ${item.hasVideo ? `<div class="absolute top-2 left-2 bg-pquick-orange text-pquick-dark w-8 h-8 rounded-full flex items-center justify-center shadow-md z-30"><i class="fa-solid fa-video"></i></div>` : ''}
                                 
-                                <!-- המפתח: גודל התצוגה נקבע על ידי ה-Overlay ללא חיתוך. -->
-                                <div class="relative bg-gray-100 overflow-hidden">
-                                    <img src="${finalOverlay}" class="relative w-full h-auto z-20 pointer-events-none block">
+                                <!-- המסגרת מכתיבה את הגובה באופן טבעי -->
+                                <div class="relative bg-gray-100 overflow-hidden rounded-t-xl">
+                                    <img src="${finalOverlay}" class="relative w-full h-auto z-20 pointer-events-none block object-contain">
                                     <img src="${item.image}" class="absolute z-10 object-cover" style="${dynamicImgStyle}">
                                     
                                     <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-40">
@@ -822,8 +820,8 @@ class Pquick_AR_Core {
                         html += `
                             <tr class="border-b border-gray-100 hover:bg-gray-50 item-animate">
                                 <td class="p-4">
-                                    <div class="w-16 relative overflow-hidden rounded-md border border-gray-200" style="display:inline-block;">
-                                        <img src="${finalOverlay}" class="relative w-full h-auto z-20 pointer-events-none block">
+                                    <div class="w-16 relative overflow-hidden rounded-md border border-gray-200 inline-block">
+                                        <img src="${finalOverlay}" class="relative w-full h-auto z-20 pointer-events-none block object-contain">
                                         <img src="${item.image}" class="absolute z-10 object-cover" style="${dynamicImgStyle}">
                                     </div>
                                 </td>
@@ -858,10 +856,10 @@ class Pquick_AR_Core {
                         .print-container { position: relative; width: 100%; max-width: 100vw; max-height: 100vh; overflow: hidden; display: inline-block; }
                         
                         /* המסגרת מכתיבה את הגודל ולעולם לא נחתכת */
-                        .overlay { width: 100%; height: auto; max-height: 100vh; position: relative; z-index: 2; display: block; }
+                        .overlay { width: 100%; height: auto; max-height: 100vh; position: relative; z-index: 2; display: block; object-fit: contain; }
                         
                         /* תמונת האורח נמתחת על האחוזים שזוהו באזור השקוף */
-                        .photo { position: absolute; width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%; object-fit: cover; z-index: 1; transform: scale(1.02); }
+                        .photo { position: absolute; width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%; object-fit: cover; z-index: 1; }
                         
                         @media print { .print-wrapper { width: 100%; height: 100%; display: block; } }
                     </style>
@@ -908,6 +906,8 @@ class Pquick_AR_Core {
     // --- אפליקציה 3: סורק ה-AR ---
     private function output_scanner_app( $event_id ) {
         $custom_logo = get_post_meta($event_id, '_pquick_event_logo', true);
+        $logo_url = $custom_logo ? $custom_logo : '';
+        $has_logo = ! empty( trim( $logo_url ) );
         ?>
         <!DOCTYPE html>
         <html lang="he" dir="rtl">
@@ -933,8 +933,8 @@ class Pquick_AR_Core {
             <div id="scanner-ui">
                 <div class="flex justify-between items-start">
                     <div class="bg-black/50 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2">
-                        <?php if(!empty($custom_logo)): ?>
-                            <img src="<?php echo esc_url($custom_logo); ?>" alt="Logo" class="max-h-[30px] w-auto object-contain block">
+                        <?php if($has_logo): ?>
+                            <img src="<?php echo esc_url($logo_url); ?>" alt="Pquick Logo" style="height: 30px; width: auto; display: block; object-fit: contain;">
                         <?php else: ?>
                             <span class="text-lg font-bold text-white">Pquick<span class="text-[#ffb800]">AR</span></span>
                         <?php endif; ?>
