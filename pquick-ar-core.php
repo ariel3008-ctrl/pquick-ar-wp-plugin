@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Pquick AR Core
- * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב.
- * Version: 16.0.7
+ * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב. חיבור ישיר ל-AWS S3.
+ * Version: 16.0.8
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -21,8 +21,55 @@ class Pquick_AR_Core {
         add_action( 'rest_api_init', array( $this, 'register_rest_endpoints' ) );
         add_action( 'template_redirect', array( $this, 'render_frontend_apps' ) );
         
+        // הגדרות מערכת ל-AWS
+        add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
+        add_action( 'admin_init', array( $this, 'register_aws_settings' ) );
+        
         // אישור העלאת קבצי SVG למערכת עבור הלוגואים
         add_filter( 'upload_mimes', array( $this, 'allow_svg_uploads' ) );
+    }
+
+    public function add_admin_menu() {
+        add_submenu_page( 'edit.php?post_type=pquick_event', 'הגדרות ענן (AWS)', 'הגדרות ענן (AWS)', 'manage_options', 'pquick-aws-settings', array( $this, 'render_aws_settings_page' ) );
+    }
+
+    public function register_aws_settings() {
+        register_setting( 'pquick_aws_settings_group', 'pquick_aws_bucket' );
+        register_setting( 'pquick_aws_settings_group', 'pquick_aws_region' );
+        register_setting( 'pquick_aws_settings_group', 'pquick_aws_access_key' );
+        register_setting( 'pquick_aws_settings_group', 'pquick_aws_secret_key' );
+    }
+
+    public function render_aws_settings_page() {
+        ?>
+        <div class="wrap">
+            <h1><span class="dashicons dashicons-cloud" style="font-size: 28px; margin-top: 5px; color: #ffb800;"></span> הגדרות ענן Pquick AR (AWS S3)</h1>
+            <p>כדי לשמור על מהירות האתר ולמנוע קריסה באירועים, כל התמונות וסרטוני הוידאו של האורחים יטוסו ישירות לענן של Amazon.</p>
+            <form method="post" action="options.php" style="background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 600px;">
+                <?php settings_fields( 'pquick_aws_settings_group' ); ?>
+                <?php do_settings_sections( 'pquick_aws_settings_group' ); ?>
+                <table class="form-table">
+                    <tr valign="top">
+                    <th scope="row">AWS Bucket Name</th>
+                    <td><input type="text" name="pquick_aws_bucket" value="<?php echo esc_attr( get_option('pquick_aws_bucket') ); ?>" class="regular-text" placeholder="לדוגמה: pquick-ar-media-2026" /></td>
+                    </tr>
+                    <tr valign="top">
+                    <th scope="row">AWS Region</th>
+                    <td><input type="text" name="pquick_aws_region" value="<?php echo esc_attr( get_option('pquick_aws_region') ); ?>" class="regular-text" placeholder="לדוגמה: eu-central-1" /></td>
+                    </tr>
+                    <tr valign="top">
+                    <th scope="row">Access Key ID</th>
+                    <td><input type="text" name="pquick_aws_access_key" value="<?php echo esc_attr( get_option('pquick_aws_access_key') ); ?>" class="regular-text" /></td>
+                    </tr>
+                    <tr valign="top">
+                    <th scope="row">Secret Access Key</th>
+                    <td><input type="password" name="pquick_aws_secret_key" value="<?php echo esc_attr( get_option('pquick_aws_secret_key') ); ?>" class="regular-text" /></td>
+                    </tr>
+                </table>
+                <?php submit_button('שמור הגדרות ענן'); ?>
+            </form>
+        </div>
+        <?php
     }
 
     public function allow_svg_uploads( $mimes ) {
@@ -32,18 +79,9 @@ class Pquick_AR_Core {
 
     public function enqueue_admin_scripts( $hook ) {
         global $post, $typenow;
-        
-        // תיקון זיהוי סוג הפוסט גם בעת יצירת אירוע חדש לגמרי
         $type = $typenow;
-        if (empty($type) && !empty($post)) {
-            $type = $post->post_type;
-        } elseif (empty($type) && isset($_GET['post_type'])) {
-            $type = $_GET['post_type'];
-        }
-
-        if ( $type == 'pquick_event' ) {
-            wp_enqueue_media();
-        }
+        if (empty($type) && !empty($post)) { $type = $post->post_type; } elseif (empty($type) && isset($_GET['post_type'])) { $type = $_GET['post_type']; }
+        if ( $type == 'pquick_event' ) { wp_enqueue_media(); }
     }
 
     public function register_cpts() {
@@ -265,6 +303,59 @@ class Pquick_AR_Core {
         if ( isset( $_POST['pquick_photo_l'] ) ) update_post_meta( $post_id, '_pquick_photo_l', floatval( $_POST['pquick_photo_l'] ) );
     }
 
+    // פונקציית העלאה מאובטחת ל-AWS S3 בשיטת Signature V4
+    private function upload_to_s3( $file_path, $s3_file_name, $content_type, $bucket, $region, $access_key, $secret_key ) {
+        $host = $bucket . '.s3.' . $region . '.amazonaws.com';
+        $uri = '/' . ltrim($s3_file_name, '/');
+        $date = gmdate('Ymd');
+        $amz_date = gmdate('Ymd\THis\Z');
+        $payload = file_get_contents($file_path);
+        $payload_hash = hash('sha256', $payload);
+
+        $canonical_uri = $uri;
+        $canonical_querystring = '';
+        $canonical_headers = "content-type:" . $content_type . "\nhost:" . $host . "\nx-amz-content-sha256:" . $payload_hash . "\nx-amz-date:" . $amz_date . "\n";
+        $signed_headers = "content-type;host;x-amz-content-sha256;x-amz-date";
+
+        $canonical_request = "PUT\n" . $canonical_uri . "\n" . $canonical_querystring . "\n" . $canonical_headers . "\n" . $signed_headers . "\n" . $payload_hash;
+
+        $algorithm = 'AWS4-HMAC-SHA256';
+        $credential_scope = $date . '/' . $region . '/s3/aws4_request';
+        $string_to_sign = $algorithm . "\n" . $amz_date . "\n" . $credential_scope . "\n" . hash('sha256', $canonical_request);
+
+        $kSecret = 'AWS4' . $secret_key;
+        $kDate = hash_hmac('sha256', $date, $kSecret, true);
+        $kRegion = hash_hmac('sha256', $region, $kDate, true);
+        $kService = hash_hmac('sha256', 's3', $kRegion, true);
+        $kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
+        $signature = hash_hmac('sha256', $string_to_sign, $kSigning);
+
+        $authorization_header = $algorithm . ' Credential=' . $access_key . '/' . $credential_scope . ', SignedHeaders=' . $signed_headers . ', Signature=' . $signature;
+        
+        $curl_headers = array(
+            "Host: " . $host,
+            "Content-Type: " . $content_type,
+            "x-amz-content-sha256: " . $payload_hash,
+            "x-amz-date: " . $amz_date,
+            "Authorization: " . $authorization_header
+        );
+
+        $ch = curl_init('https://' . $host . $uri);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $curl_headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_code == 200) {
+            return 'https://' . $host . $uri;
+        }
+        return false;
+    }
+
     public function register_rest_endpoints() {
         register_rest_route( 'pquick/v1', '/upload', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'handle_guest_upload' ), 'permission_callback' => '__return_true' ) );
         register_rest_route( 'pquick/v1', '/event-media/(?P<event_id>\d+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'get_event_media' ), 'permission_callback' => '__return_true' ) );
@@ -286,28 +377,60 @@ class Pquick_AR_Core {
             }
         }
 
-        $image_parts = explode(";base64,", $image_base64);
-        $image_base64 = base64_decode($image_parts[1]);
-        $image_name = 'pquick_evt_' . $event_id . '_' . time() . '.jpg';
-        $upload_dir = wp_upload_dir();
-        $image_path = $upload_dir['path'] . '/' . $image_name;
-        
-        file_put_contents($image_path, $image_base64);
-        $image_url = $upload_dir['url'] . '/' . $image_name;
+        // הגדרות AWS
+        $aws_bucket = get_option('pquick_aws_bucket');
+        $aws_region = get_option('pquick_aws_region');
+        $aws_access = get_option('pquick_aws_access_key');
+        $aws_secret = get_option('pquick_aws_secret_key');
+        $use_aws = ($aws_bucket && $aws_region && $aws_access && $aws_secret);
 
-        $video_file = $request->get_file_params()['video_file'] ?? null;
-        $video_url = '';
-        if ( $video_file && $video_file['error'] === UPLOAD_ERR_OK ) {
-            require_once( ABSPATH . 'wp-admin/includes/file.php' );
-            $movefile = wp_handle_upload( $video_file, array( 'test_form' => false ) );
-            if ( $movefile && ! isset( $movefile['error'] ) ) { $video_url = $movefile['url']; }
+        // שמירת התמונה זמנית
+        $image_parts = explode(";base64,", $image_base64);
+        $image_base64_decoded = base64_decode($image_parts[1]);
+        $time_stamp = time();
+        $image_name = 'pquick_evt_' . $event_id . '_' . $time_stamp . '.jpg';
+        $upload_dir = wp_upload_dir();
+        $temp_image_path = $upload_dir['path'] . '/' . $image_name;
+        file_put_contents($temp_image_path, $image_base64_decoded);
+        
+        $final_image_url = '';
+        if ($use_aws) {
+            $s3_path = 'events/' . $event_id . '/' . $image_name;
+            $s3_url = $this->upload_to_s3($temp_image_path, $s3_path, 'image/jpeg', $aws_bucket, $aws_region, $aws_access, $aws_secret);
+            if ($s3_url) {
+                $final_image_url = $s3_url;
+                unlink($temp_image_path); // מוחק מהשרת המקומי!
+            } else {
+                $final_image_url = $upload_dir['url'] . '/' . $image_name; // גיבוי אם AWS נכשל
+            }
+        } else {
+            $final_image_url = $upload_dir['url'] . '/' . $image_name;
         }
 
-        $post_id = wp_insert_post( array( 'post_type' => 'pquick_media', 'post_title' => 'Upload #' . time(), 'post_status' => 'publish' ) );
+        // טיפול בוידאו
+        $video_file = $request->get_file_params()['video_file'] ?? null;
+        $final_video_url = '';
+        if ( $video_file && $video_file['error'] === UPLOAD_ERR_OK ) {
+            if ($use_aws) {
+                $video_ext = pathinfo($video_file['name'], PATHINFO_EXTENSION);
+                $video_name = 'pquick_evt_' . $event_id . '_' . $time_stamp . '.' . $video_ext;
+                $s3_video_path = 'events/' . $event_id . '/' . $video_name;
+                $s3_vid_url = $this->upload_to_s3($video_file['tmp_name'], $s3_video_path, $video_file['type'], $aws_bucket, $aws_region, $aws_access, $aws_secret);
+                if ($s3_vid_url) {
+                    $final_video_url = $s3_vid_url;
+                }
+            } else {
+                require_once( ABSPATH . 'wp-admin/includes/file.php' );
+                $movefile = wp_handle_upload( $video_file, array( 'test_form' => false ) );
+                if ( $movefile && ! isset( $movefile['error'] ) ) { $final_video_url = $movefile['url']; }
+            }
+        }
+
+        $post_id = wp_insert_post( array( 'post_type' => 'pquick_media', 'post_title' => 'Upload #' . $time_stamp, 'post_status' => 'publish' ) );
 
         update_post_meta( $post_id, '_pquick_parent_event', $event_id );
-        update_post_meta( $post_id, '_pquick_image_url', $image_url );
-        update_post_meta( $post_id, '_pquick_video_url', $video_url );
+        update_post_meta( $post_id, '_pquick_image_url', $final_image_url );
+        update_post_meta( $post_id, '_pquick_video_url', $final_video_url );
         update_post_meta( $post_id, '_pquick_copies', $copies );
         update_post_meta( $post_id, '_pquick_print_status', 'pending' );
 
@@ -390,7 +513,6 @@ class Pquick_AR_Core {
             <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b', light: '#f9f9f9' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
-                console.log("=== Pquick App Debug ===\nApp Type: Guest Upload\nHas Logo: <?php echo $has_logo ? 'true' : 'false'; ?>\nLogo URL from DB: <?php echo esc_js($logo_url); ?>\n=========================");
             </script>
             <style>
                 body { background-color: #f5f5f5; -webkit-tap-highlight-color: transparent; }
@@ -400,19 +522,9 @@ class Pquick_AR_Core {
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 .file-upload-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
                 .file-upload-wrapper input[type="file"] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; }
-                
-                /* המסגרת לא נחתכת אף פעם (height: auto) */
                 .preview-frame { position: relative; width: 100%; background-color: #eee; overflow: hidden; box-shadow: 0 4px 15px rgba(69, 72, 87, 0.15); }
                 .preview-overlay-dynamic { width: 100%; height: auto; position: relative; z-index: 2; pointer-events: none; display: block; object-fit: contain; }
-                
-                /* הלבשה טהורה וללא scale */
-                .preview-image { position: absolute; z-index: 1; object-fit: cover; 
-                    width: <?php echo esc_attr($photo_w); ?>%; 
-                    height: <?php echo esc_attr($photo_h); ?>%; 
-                    top: <?php echo esc_attr($photo_t); ?>%; 
-                    left: <?php echo esc_attr($photo_l); ?>%; 
-                }
-                
+                .preview-image { position: absolute; z-index: 1; object-fit: cover; width: <?php echo esc_attr($photo_w); ?>%; height: <?php echo esc_attr($photo_h); ?>%; top: <?php echo esc_attr($photo_t); ?>%; left: <?php echo esc_attr($photo_l); ?>%; }
                 .crop-container { width: 100%; height: 50vh; background-color: #000; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
                 @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
                 .btn-magic-contact { background: linear-gradient(270deg, #ffb800, #ff7a7b, #9ad7cf, #ffb800); background-size: 300% 300%; animation: gradientShift 4s ease infinite; color: white; text-shadow: 0px 1px 2px rgba(0,0,0,0.2); }
@@ -499,7 +611,7 @@ class Pquick_AR_Core {
                     <div class="text-center w-full max-w-xs mx-auto">
                         <i class="fa-solid fa-cloud-arrow-up text-5xl text-pquick-orange mb-4 animate-bounce"></i>
                         <h2 class="text-xl font-bold">יוצר את הקסם...</h2>
-                        <p class="text-gray-500 text-sm mt-2">מעלה תמונה ווידאו, אנא המתן</p>
+                        <p class="text-gray-500 text-sm mt-2">מגבה בענן של Amazon, אנא המתן</p>
                         <div class="progress-container"><div id="upload-progress-bar" class="progress-bar"></div></div>
                         <p id="upload-progress-text" class="text-pquick-dark font-bold mt-2">0%</p>
                     </div>
@@ -605,12 +717,7 @@ class Pquick_AR_Core {
                             imageToCropElement.src = event.target.result;
                             showStep('step-crop');
                             if (cropper) cropper.destroy();
-                            
-                            // חיתוך אחד לאחד בדיוק לפי מה שהוגדר בוורדפרס.
-                            cropper = new Cropper(imageToCropElement, {
-                                aspectRatio: EVENT_DATA.printFormat, 
-                                viewMode: 1, dragMode: 'move', autoCropArea: 1, guides: true, center: true, highlight: false, cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false
-                            });
+                            cropper = new Cropper(imageToCropElement, { aspectRatio: EVENT_DATA.printFormat, viewMode: 1, dragMode: 'move', autoCropArea: 1, guides: true, center: true, highlight: false, cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false });
                         }
                         reader.readAsDataURL(this.files[0]);
                     }
@@ -622,18 +729,14 @@ class Pquick_AR_Core {
 
                 document.getElementById('btn-save-crop').addEventListener('click', () => {
                     if (!cropper) return;
-                    
                     const exportWidth = 1200;
                     const exportHeight = exportWidth / EVENT_DATA.printFormat;
-                    
                     const canvas = cropper.getCroppedCanvas({ width: exportWidth, height: exportHeight });
                     croppedImageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     previewImgElement.src = croppedImageDataUrl;
-                    
                     hasImage = true;
                     document.getElementById('image-filename').classList.remove('hidden');
                     document.getElementById('image-dropzone').classList.replace('border-gray-300', 'border-pquick-lightgreen');
-                    
                     inputVideo.disabled = false;
                     document.getElementById('video-dropzone').classList.remove('opacity-50');
                     if (cropper) cropper.destroy();
@@ -667,7 +770,7 @@ class Pquick_AR_Core {
                             const percentComplete = Math.round((e.loaded / e.total) * 100);
                             document.getElementById('upload-progress-bar').style.width = percentComplete + '%';
                             document.getElementById('upload-progress-text').textContent = percentComplete + '%';
-                            if(percentComplete === 100) document.getElementById('upload-progress-text').textContent = "מעבד קבצים, אנא המתן...";
+                            if(percentComplete === 100) document.getElementById('upload-progress-text').textContent = "מעבד קבצים בענן (AWS), אנא המתן...";
                         }
                     };
                     xhr.onload = function() {
@@ -715,13 +818,10 @@ class Pquick_AR_Core {
             <script src="https://cdn.tailwindcss.com"></script>
             <link href="https://fonts.googleapis.com/css2?family=Alef:wght@400;700&display=swap" rel="stylesheet">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-            
             <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
-
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
-                console.log("=== Pquick App Debug ===\nApp Type: Operator Dashboard\nHas Logo: <?php echo $has_logo ? 'true' : 'false'; ?>\nLogo URL from DB: <?php echo esc_js($logo_url); ?>\n=========================");
             </script>
             <style>
                 body { background-color: #f0f2f5; }
@@ -761,10 +861,8 @@ class Pquick_AR_Core {
                         <button id="btn-view-list" class="view-btn w-10 h-10 rounded-md bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"><i class="fa-solid fa-list text-lg"></i></button>
                     </div>
                     <div class="w-px h-6 bg-gray-300 mx-1"></div>
-                    
                     <button onclick="toggleAll(true)" class="text-sm text-gray-600 hover:text-pquick-dark font-medium"><i class="fa-solid fa-check-double"></i> בחר הכל</button>
                     <button onclick="toggleAll(false)" class="text-sm text-gray-600 hover:text-pquick-dark font-medium ml-2"><i class="fa-regular fa-square"></i> בטל בחירה</button>
-                    
                     <button id="btn-download-selected" onclick="downloadSelected()" class="bg-pquick-lightgreen text-pquick-dark font-bold text-sm px-4 py-2 rounded-md hover:opacity-90 transition-opacity hidden shadow-sm"><i class="fa-solid fa-download ml-1"></i> הורד נבחרים (<span id="selected-count">0</span>)</button>
                     <button id="btn-download-all" onclick="downloadAll()" class="bg-white border-2 border-pquick-dark text-pquick-dark font-bold text-sm px-4 py-2 rounded-md hover:bg-gray-50 transition-colors shadow-sm"><i class="fa-solid fa-file-zipper ml-1"></i> הורד כל האירוע</button>
                 </div>
@@ -785,7 +883,6 @@ class Pquick_AR_Core {
         <script>
             const EVENT_ID = <?php echo intval($event_id); ?>;
             const OVERLAY_URL = "<?php echo esc_js($overlay_url); ?>";
-            
             const LAYOUT = { w: <?php echo floatval($photo_w); ?>, h: <?php echo floatval($photo_h); ?>, t: <?php echo floatval($photo_t); ?>, l: <?php echo floatval($photo_l); ?> };
             
             let finalOverlay = OVERLAY_URL;
@@ -809,7 +906,6 @@ class Pquick_AR_Core {
             fetchMedia();
             setInterval(fetchMedia, 5000);
 
-            // ניהול בחירת קבצים
             window.toggleSelection = function(id, isChecked) {
                 if(isChecked) selectedItems.add(String(id));
                 else selectedItems.delete(String(id));
@@ -846,7 +942,6 @@ class Pquick_AR_Core {
             function render() {
                 const container = document.getElementById('content-container');
                 if(uploadsData.length === 0) { container.innerHTML = '<p class="text-center text-gray-500 mt-10">אין תמונות עדיין. ממתין לאורחים...</p>'; return; }
-                
                 const dynamicImgStyle = `width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%;`;
 
                 let html = '';
@@ -859,11 +954,9 @@ class Pquick_AR_Core {
                         html += `
                             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col item-animate relative group">
                                 <div class="absolute top-2 right-2 bg-pquick-dark text-white font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-md z-30 border-2 border-white">${item.copies}x</div>
-                                
                                 <div class="absolute top-2 left-2 z-50 bg-white rounded-md shadow flex items-center justify-center w-8 h-8">
                                     <input type="checkbox" value="${item.id}" class="w-5 h-5 cursor-pointer text-pquick-orange focus:ring-pquick-orange border-gray-300 rounded" onchange="toggleSelection('${item.id}', this.checked)" ${isChecked}>
                                 </div>
-                                
                                 ${item.hasVideo ? `<div class="absolute top-2 left-12 bg-pquick-orange text-pquick-dark w-8 h-8 rounded-md flex items-center justify-center shadow-md z-30"><i class="fa-solid fa-video"></i></div>` : ''}
                                 
                                 <div class="relative bg-gray-100 overflow-hidden rounded-t-xl">
@@ -920,7 +1013,6 @@ class Pquick_AR_Core {
                 updateStats();
             }
 
-            // --- מנגנון מיזוג תמונות משופר להורדה ---
             async function getOverlayImage() {
                 if (cachedOverlayImg) return cachedOverlayImg;
                 return new Promise((resolve, reject) => {
@@ -940,27 +1032,23 @@ class Pquick_AR_Core {
                     canvas.height = overlay.height;
                     const ctx = canvas.getContext('2d');
 
-                    // תיקון: צביעת הרקע בלבן כדי למנוע שקיפות שהופכת לשחור
                     ctx.fillStyle = '#ffffff';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
                     const photo = new Image();
                     photo.crossOrigin = "Anonymous";
                     photo.onload = () => {
-                        // חישוב מיקום היעד המקורי באחוזים
                         const targetX = (LAYOUT.l / 100) * canvas.width;
                         const targetY = (LAYOUT.t / 100) * canvas.height;
                         const targetW = (LAYOUT.w / 100) * canvas.width;
                         const targetH = (LAYOUT.h / 100) * canvas.height;
 
-                        // תיקון: הוספת "דימום" (Bleed) למניעת פס שחור מסביב
                         const bleed = 3; 
                         const finalX = targetX - bleed;
                         const finalY = targetY - bleed;
                         const finalW = targetW + (bleed * 2);
                         const finalH = targetH + (bleed * 2);
 
-                        // תיקון: אלגוריתם Object-Fit Cover שחותך שוליים עודפים במקום למעוך
                         const imgRatio = photo.width / photo.height;
                         const destRatio = finalW / finalH;
                         let sX = 0, sY = 0, sW = photo.width, sH = photo.height;
@@ -973,13 +1061,9 @@ class Pquick_AR_Core {
                             sY = (photo.height - sH) / 2;
                         }
 
-                        // ציור התמונה החתוכה
                         ctx.drawImage(photo, sX, sY, sW, sH, finalX, finalY, finalW, finalH);
-                        
-                        // ציור המסגרת מעל
                         ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
-                        
-                        resolve(canvas.toDataURL('image/jpeg', 0.95)); // שמירה באיכות גבוהה 95%
+                        resolve(canvas.toDataURL('image/jpeg', 0.95));
                     };
                     photo.onerror = reject;
                     photo.src = photoUrl;
@@ -1028,22 +1112,15 @@ class Pquick_AR_Core {
                 zip.generateAsync({type:"blob"}).then(function(content) {
                     saveAs(content, `Pquick_Event_${EVENT_ID}_Photos.zip`);
                     progressEl.classList.add('hidden'); progressEl.classList.remove('flex');
-                    toggleAll(false); // ניקוי בחירה בסיום
+                    toggleAll(false); 
                 });
             }
 
-            window.downloadSelected = function() {
-                const items = uploadsData.filter(item => selectedItems.has(String(item.id)));
-                downloadMultiple(items);
-            };
-
-            window.downloadAll = function() {
-                downloadMultiple(uploadsData);
-            };
+            window.downloadSelected = function() { downloadMultiple(uploadsData.filter(item => selectedItems.has(String(item.id)))); };
+            window.downloadAll = function() { downloadMultiple(uploadsData); };
 
             window.printItem = async function(id, imageUrl) {
                 const printWindow = window.open('', '_blank');
-                
                 const printHTML = `
                 <!DOCTYPE html>
                 <html lang="he" dir="rtl">
@@ -1078,12 +1155,9 @@ class Pquick_AR_Core {
                         }, 100);
                     <\/script>
                 </body>
-                </html>
-                `;
-                
+                </html>`;
                 printWindow.document.write(printHTML);
                 printWindow.document.close();
-
                 const itemIndex = uploadsData.findIndex(item => item.id == id);
                 if (itemIndex > -1) {
                     uploadsData[itemIndex].status = 'printed';
@@ -1117,9 +1191,6 @@ class Pquick_AR_Core {
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
             <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
-            <script>
-                console.log("=== Pquick App Debug ===\nApp Type: AR Scanner\nHas Logo: <?php echo $has_logo ? 'true' : 'false'; ?>\nLogo URL from DB: <?php echo esc_js($logo_url); ?>\n=========================");
-            </script>
             <style>
                 body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Alef', sans-serif;}
                 .a-enter-vr, .a-enter-ar { display: none !important; }
@@ -1197,11 +1268,8 @@ class Pquick_AR_Core {
 
                     btnUnmute.addEventListener('click', () => {
                         videoEl.muted = !videoEl.muted;
-                        if(videoEl.muted) {
-                            btnUnmute.innerHTML = '<i class="fa-solid fa-volume-xmark mr-2"></i> הפעל סאונד';
-                        } else {
-                            btnUnmute.innerHTML = '<i class="fa-solid fa-volume-high mr-2"></i> השתק סאונד';
-                        }
+                        if(videoEl.muted) { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-xmark mr-2"></i> הפעל סאונד'; } 
+                        else { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-high mr-2"></i> השתק סאונד'; }
                     });
                 });
             </script>
