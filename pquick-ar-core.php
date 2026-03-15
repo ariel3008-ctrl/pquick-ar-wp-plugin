@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pquick AR Core
  * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב.
- * Version: 16.0.2
+ * Version: 16.0.3
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -431,7 +431,7 @@ class Pquick_AR_Core {
         <div class="app-container relative">
             <header class="p-4 flex justify-center items-center border-b border-gray-100 sticky top-0 bg-white z-10 shadow-sm min-h-[70px]">
                 <?php if($has_logo): ?>
-                    <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" style="height: 40px; width: auto; object-fit: contain; display: block;">
+                    <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" class="h-10 w-auto object-contain shrink-0 drop-shadow-sm" style="min-width: 60px;" onerror="this.outerHTML='<div class=\'flex flex-col items-center justify-center leading-none\'><span class=\'text-3xl font-bold text-pquick-dark\' style=\'font-family: Alef, sans-serif;\'>Pquick</span><span class=\'text-lg font-bold text-pquick-orange\' style=\'font-family: Alef, sans-serif;\'>Events</span></div>';">
                 <?php else: ?>
                     <div class="flex flex-col items-center justify-center leading-none">
                         <span class="text-3xl font-bold text-pquick-dark" style="font-family: 'Alef', sans-serif;">Pquick</span>
@@ -743,7 +743,7 @@ class Pquick_AR_Core {
             <header class="bg-white shadow-sm border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0 z-10 min-h-[70px]">
                 <div class="flex items-center gap-4">
                     <?php if($has_logo): ?>
-                        <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" style="height: 40px; width: auto; object-fit: contain; display: block;">
+                        <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" class="h-10 w-auto object-contain shrink-0 drop-shadow-sm" style="min-width: 60px;" onerror="this.outerHTML='<div class=\'flex flex-col items-center justify-center leading-none\'><span class=\'text-2xl font-bold text-pquick-dark\' style=\'font-family: Alef, sans-serif;\'>Pquick</span><span class=\'text-sm font-bold text-pquick-orange\' style=\'font-family: Alef, sans-serif;\'>Events</span></div>';">
                     <?php else: ?>
                         <div class="flex flex-col items-center justify-center leading-none">
                             <span class="text-2xl font-bold text-pquick-dark" style="font-family: 'Alef', sans-serif;">Pquick</span>
@@ -978,7 +978,7 @@ class Pquick_AR_Core {
                 <div class="flex justify-between items-start">
                     <div class="bg-black/50 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2">
                         <?php if($has_logo): ?>
-                            <img src="<?php echo esc_url($logo_url); ?>" alt="Pquick Logo" style="height: 30px; width: auto; display: block; object-fit: contain;">
+                            <img src="<?php echo esc_url($logo_url); ?>" alt="Pquick Logo" class="h-8 w-auto block object-contain shrink-0" style="min-width: 40px;" onerror="this.outerHTML='<span class=\'text-lg font-bold text-white\'>Pquick<span class=\'text-[#ffb800]\'>AR</span></span>';">
                         <?php else: ?>
                             <span class="text-lg font-bold text-white">Pquick<span class="text-[#ffb800]">AR</span></span>
                         <?php endif; ?>
