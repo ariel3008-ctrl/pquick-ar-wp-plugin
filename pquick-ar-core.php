@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pquick AR Core
  * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב.
- * Version: 16.0.5
+ * Version: 16.0.6
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -390,13 +390,7 @@ class Pquick_AR_Core {
             <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b', light: '#f9f9f9' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
-                
-                // --- פקודת דיבאג חכמה לקונסולה ---
-                console.log("=== Pquick App Debug ===");
-                console.log("App Type:", "Guest Upload");
-                console.log("Has Logo:", <?php echo $has_logo ? 'true' : 'false'; ?>);
-                console.log("Logo URL from DB:", "<?php echo esc_js($logo_url); ?>");
-                console.log("=========================");
+                console.log("=== Pquick App Debug ===\nApp Type: Guest Upload\nHas Logo: <?php echo $has_logo ? 'true' : 'false'; ?>\nLogo URL from DB: <?php echo esc_js($logo_url); ?>\n=========================");
             </script>
             <style>
                 body { background-color: #f5f5f5; -webkit-tap-highlight-color: transparent; }
@@ -721,15 +715,13 @@ class Pquick_AR_Core {
             <script src="https://cdn.tailwindcss.com"></script>
             <link href="https://fonts.googleapis.com/css2?family=Alef:wght@400;700&display=swap" rel="stylesheet">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+            
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
-                
-                // --- פקודת דיבאג חכמה לקונסולה ---
-                console.log("=== Pquick App Debug ===");
-                console.log("App Type:", "Operator Dashboard");
-                console.log("Has Logo:", <?php echo $has_logo ? 'true' : 'false'; ?>);
-                console.log("Logo URL from DB:", "<?php echo esc_js($logo_url); ?>");
-                console.log("=========================");
+                console.log("=== Pquick App Debug ===\nApp Type: Operator Dashboard\nHas Logo: <?php echo $has_logo ? 'true' : 'false'; ?>\nLogo URL from DB: <?php echo esc_js($logo_url); ?>\n=========================");
             </script>
             <style>
                 body { background-color: #f0f2f5; }
@@ -761,14 +753,34 @@ class Pquick_AR_Core {
                     <div class="text-center"><div class="text-sm text-pquick-lightgreen font-bold">הודפס</div><div class="text-xl font-bold text-pquick-lightgreen" id="stat-printed">0</div></div>
                 </div>
             </header>
+            
             <div class="bg-white px-6 py-3 border-b border-gray-200 flex justify-between items-center shrink-0">
-                <div class="flex gap-2">
-                    <button id="btn-view-grid" class="view-btn active w-10 h-10 rounded-md bg-pquick-dark text-white shadow-inner"><i class="fa-solid fa-border-all text-lg"></i></button>
-                    <button id="btn-view-list" class="view-btn w-10 h-10 rounded-md bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"><i class="fa-solid fa-list text-lg"></i></button>
+                <div class="flex items-center gap-3">
+                    <div class="flex gap-2">
+                        <button id="btn-view-grid" class="view-btn active w-10 h-10 rounded-md bg-pquick-dark text-white shadow-inner"><i class="fa-solid fa-border-all text-lg"></i></button>
+                        <button id="btn-view-list" class="view-btn w-10 h-10 rounded-md bg-white border border-gray-300 text-gray-600 hover:bg-gray-50"><i class="fa-solid fa-list text-lg"></i></button>
+                    </div>
+                    <div class="w-px h-6 bg-gray-300 mx-1"></div>
+                    
+                    <button onclick="toggleAll(true)" class="text-sm text-gray-600 hover:text-pquick-dark font-medium"><i class="fa-solid fa-check-double"></i> בחר הכל</button>
+                    <button onclick="toggleAll(false)" class="text-sm text-gray-600 hover:text-pquick-dark font-medium ml-2"><i class="fa-regular fa-square"></i> בטל בחירה</button>
+                    
+                    <button id="btn-download-selected" onclick="downloadSelected()" class="bg-pquick-lightgreen text-pquick-dark font-bold text-sm px-4 py-2 rounded-md hover:opacity-90 transition-opacity hidden shadow-sm"><i class="fa-solid fa-download ml-1"></i> הורד נבחרים (<span id="selected-count">0</span>)</button>
+                    <button id="btn-download-all" onclick="downloadAll()" class="bg-white border-2 border-pquick-dark text-pquick-dark font-bold text-sm px-4 py-2 rounded-md hover:bg-gray-50 transition-colors shadow-sm"><i class="fa-solid fa-file-zipper ml-1"></i> הורד כל האירוע</button>
                 </div>
                 <div><input type="text" id="search-input" placeholder="חיפוש לפי ID..." class="pl-4 pr-4 py-2 border border-gray-300 rounded-full text-sm w-64"></div>
             </div>
+            
             <main class="flex-1 overflow-y-auto p-6" id="main-content-area"><div id="content-container">טוען נתונים מהשרת...</div></main>
+
+            <div id="download-progress-container" class="fixed inset-0 bg-white/90 backdrop-blur-sm z-50 hidden flex-col items-center justify-center">
+                <i class="fa-solid fa-file-zipper text-6xl text-pquick-dark mb-4 animate-bounce"></i>
+                <h2 class="text-2xl font-bold text-pquick-dark mb-2">מכין קבצים להורדה...</h2>
+                <p id="download-progress-text" class="text-gray-500 font-medium mb-4">אנא המתן, ממזג תמונות עם המסגרת</p>
+                <div class="w-64 bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
+                    <div id="download-progress-bar" class="bg-pquick-orange h-full w-0 transition-all duration-300"></div>
+                </div>
+            </div>
 
         <script>
             const EVENT_ID = <?php echo intval($event_id); ?>;
@@ -783,6 +795,8 @@ class Pquick_AR_Core {
 
             let uploadsData = [];
             let currentView = 'grid';
+            let selectedItems = new Set();
+            let cachedOverlayImg = null;
             
             async function fetchMedia() {
                 try {
@@ -794,6 +808,28 @@ class Pquick_AR_Core {
 
             fetchMedia();
             setInterval(fetchMedia, 5000);
+
+            // ניהול בחירת קבצים
+            window.toggleSelection = function(id, isChecked) {
+                if(isChecked) selectedItems.add(String(id));
+                else selectedItems.delete(String(id));
+                updateSelectionUI();
+            };
+
+            window.toggleAll = function(isChecked) {
+                if(isChecked) { uploadsData.forEach(item => selectedItems.add(String(item.id))); } 
+                else { selectedItems.clear(); }
+                render();
+                updateSelectionUI();
+            };
+
+            function updateSelectionUI() {
+                const count = selectedItems.size;
+                document.getElementById('selected-count').innerText = count;
+                const btnSel = document.getElementById('btn-download-selected');
+                if(count > 0) { btnSel.classList.remove('hidden'); btnSel.classList.add('inline-flex'); } 
+                else { btnSel.classList.add('hidden'); btnSel.classList.remove('inline-flex'); }
+            }
 
             function updateStats() {
                 document.getElementById('stat-total').textContent = uploadsData.length;
@@ -811,7 +847,6 @@ class Pquick_AR_Core {
                 const container = document.getElementById('content-container');
                 if(uploadsData.length === 0) { container.innerHTML = '<p class="text-center text-gray-500 mt-10">אין תמונות עדיין. ממתין לאורחים...</p>'; return; }
                 
-                // הלבשה נקייה למפעיל - ללא Scale
                 const dynamicImgStyle = `width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%;`;
 
                 let html = '';
@@ -819,18 +854,26 @@ class Pquick_AR_Core {
                     container.className = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6';
                     uploadsData.forEach(item => {
                         const isPending = item.status === 'pending';
+                        const isChecked = selectedItems.has(String(item.id)) ? 'checked' : '';
+                        
                         html += `
                             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col item-animate relative group">
                                 <div class="absolute top-2 right-2 bg-pquick-dark text-white font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-md z-30 border-2 border-white">${item.copies}x</div>
-                                ${item.hasVideo ? `<div class="absolute top-2 left-2 bg-pquick-orange text-pquick-dark w-8 h-8 rounded-full flex items-center justify-center shadow-md z-30"><i class="fa-solid fa-video"></i></div>` : ''}
+                                <div class="absolute top-2 left-2 z-40 bg-white rounded-md shadow flex items-center justify-center w-8 h-8">
+                                    <input type="checkbox" value="${item.id}" class="w-5 h-5 cursor-pointer text-pquick-orange focus:ring-pquick-orange border-gray-300 rounded" onchange="toggleSelection('${item.id}', this.checked)" ${isChecked}>
+                                </div>
+                                ${item.hasVideo ? `<div class="absolute top-2 left-12 bg-pquick-orange text-pquick-dark w-8 h-8 rounded-md flex items-center justify-center shadow-md z-30"><i class="fa-solid fa-video"></i></div>` : ''}
                                 
                                 <div class="relative bg-gray-100 overflow-hidden rounded-t-xl">
                                     <img src="${finalOverlay}" class="relative w-full h-auto z-20 pointer-events-none block object-contain">
                                     <img src="${item.image}" class="absolute z-10 object-cover" style="${dynamicImgStyle}">
                                     
-                                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-40">
-                                        <button class="bg-white text-pquick-dark font-bold py-2 px-4 rounded-full shadow-lg hover:bg-pquick-orange transition-colors" onclick="printItem('${item.id}', '${item.image}')">
-                                            <i class="fa-solid fa-print ml-2"></i> ${isPending ? 'הדפס עכשיו' : 'הדפס שוב'}
+                                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 z-40">
+                                        <button class="bg-white text-pquick-dark font-bold py-2 px-3 rounded-full shadow-lg hover:bg-pquick-orange transition-colors" onclick="printItem('${item.id}', '${item.image}')" title="הדפס">
+                                            <i class="fa-solid fa-print"></i>
+                                        </button>
+                                        <button class="bg-white text-pquick-dark font-bold py-2 px-3 rounded-full shadow-lg hover:bg-pquick-lightgreen transition-colors" onclick="downloadSingle('${item.id}', '${item.image}', this)" title="הורד תמונה עם מסגרת">
+                                            <i class="fa-solid fa-download"></i>
                                         </button>
                                     </div>
                                 </div>
@@ -842,11 +885,17 @@ class Pquick_AR_Core {
                     });
                 } else {
                     container.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden';
-                    html = `<table class="w-full text-right border-collapse"><thead><tr class="bg-gray-50 border-b border-gray-200 text-gray-500 text-sm"><th class="p-4">תמונה מטופלת</th><th class="p-4">ID</th><th class="p-4">שעה</th><th class="p-4 text-center">וידאו</th><th class="p-4 text-center">העתקים</th><th class="p-4">סטטוס</th><th class="p-4 text-left">פעולה</th></tr></thead><tbody>`;
+                    html = `<table class="w-full text-right border-collapse"><thead><tr class="bg-gray-50 border-b border-gray-200 text-gray-500 text-sm">
+                        <th class="p-4 w-12 text-center"></th>
+                        <th class="p-4">תמונה מטופלת</th><th class="p-4">ID</th><th class="p-4">שעה</th><th class="p-4 text-center">וידאו</th><th class="p-4 text-center">העתקים</th><th class="p-4">סטטוס</th><th class="p-4 text-left">פעולה</th></tr></thead><tbody>`;
                     uploadsData.forEach(item => {
                         const isPending = item.status === 'pending';
+                        const isChecked = selectedItems.has(String(item.id)) ? 'checked' : '';
                         html += `
                             <tr class="border-b border-gray-100 hover:bg-gray-50 item-animate">
+                                <td class="p-4 text-center">
+                                    <input type="checkbox" value="${item.id}" class="w-5 h-5 cursor-pointer rounded border-gray-300 text-pquick-orange" onchange="toggleSelection('${item.id}', this.checked)" ${isChecked}>
+                                </td>
                                 <td class="p-4">
                                     <div class="w-16 relative overflow-hidden rounded-md border border-gray-200 inline-block">
                                         <img src="${finalOverlay}" class="relative w-full h-auto z-20 pointer-events-none block object-contain">
@@ -857,7 +906,10 @@ class Pquick_AR_Core {
                                 <td class="p-4 text-center">${item.hasVideo ? '<i class="fa-solid fa-video text-pquick-orange"></i>' : '-'}</td>
                                 <td class="p-4 text-center"><span class="bg-gray-100 font-bold px-3 py-1 rounded-full">${item.copies}</span></td>
                                 <td class="p-4">${getStatusBadge(item.status)}</td>
-                                <td class="p-4 text-left"><button onclick="printItem('${item.id}', '${item.image}')" class="${isPending ? 'bg-pquick-orange text-pquick-dark' : 'bg-white border text-gray-600'} font-bold py-2 px-4 rounded-md shadow-sm">הדפס</button></td>
+                                <td class="p-4 text-left">
+                                    <button onclick="downloadSingle('${item.id}', '${item.image}', this)" class="bg-white border text-gray-600 font-bold py-2 px-3 rounded-md shadow-sm mr-2" title="הורד תמונה"><i class="fa-solid fa-download"></i></button>
+                                    <button onclick="printItem('${item.id}', '${item.image}')" class="${isPending ? 'bg-pquick-orange text-pquick-dark' : 'bg-white border text-gray-600'} font-bold py-2 px-4 rounded-md shadow-sm">הדפס</button>
+                                </td>
                             </tr>`;
                     });
                     html += `</tbody></table>`;
@@ -865,6 +917,97 @@ class Pquick_AR_Core {
                 container.innerHTML = html;
                 updateStats();
             }
+
+            // --- מנגנון מיזוג תמונות (Canvas) להורדה ---
+            async function getOverlayImage() {
+                if (cachedOverlayImg) return cachedOverlayImg;
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = "Anonymous";
+                    img.onload = () => { cachedOverlayImg = img; resolve(img); };
+                    img.onerror = reject;
+                    img.src = finalOverlay;
+                });
+            }
+
+            async function generateMergedDataURL(photoUrl) {
+                const overlay = await getOverlayImage();
+                return new Promise((resolve, reject) => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = overlay.width;
+                    canvas.height = overlay.height;
+                    const ctx = canvas.getContext('2d');
+
+                    const photo = new Image();
+                    photo.crossOrigin = "Anonymous";
+                    photo.onload = () => {
+                        const px = (LAYOUT.l / 100) * canvas.width;
+                        const py = (LAYOUT.t / 100) * canvas.height;
+                        const pw = (LAYOUT.w / 100) * canvas.width;
+                        const ph = (LAYOUT.h / 100) * canvas.height;
+                        ctx.drawImage(photo, px, py, pw, ph);
+                        ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.92));
+                    };
+                    photo.onerror = reject;
+                    photo.src = photoUrl;
+                });
+            }
+
+            window.downloadSingle = async function(id, imageUrl, btnElement) {
+                const originalHtml = btnElement.innerHTML;
+                btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+                try {
+                    const dataUrl = await generateMergedDataURL(imageUrl);
+                    const link = document.createElement('a');
+                    link.href = dataUrl;
+                    link.download = `Pquick_Photo_${id}.jpg`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } catch(e) { alert("שגיאה בהורדת התמונה. בדוק חיבור לאינטרנט."); }
+                btnElement.innerHTML = originalHtml;
+            };
+
+            async function downloadMultiple(itemsToDownload) {
+                if(itemsToDownload.length === 0) return;
+                
+                const zip = new JSZip();
+                const folder = zip.folder("Pquick_Event_" + EVENT_ID);
+                
+                const progressEl = document.getElementById('download-progress-container');
+                const progressText = document.getElementById('download-progress-text');
+                const progressBar = document.getElementById('download-progress-bar');
+                progressEl.classList.remove('hidden'); progressEl.classList.add('flex');
+                
+                let count = 0;
+                for(const item of itemsToDownload) {
+                    count++;
+                    progressText.innerText = `מעבד תמונה ${count} מתוך ${itemsToDownload.length}...`;
+                    progressBar.style.width = `${(count/itemsToDownload.length)*100}%`;
+                    try {
+                        const dataUrl = await generateMergedDataURL(item.image);
+                        const base64Data = dataUrl.split(',')[1];
+                        folder.file(`Pquick_Photo_${item.id}.jpg`, base64Data, {base64: true});
+                    } catch(e) { console.error("Failed to merge image", item.id); }
+                }
+                
+                progressText.innerText = "אורז את הקבצים לקובץ ZIP...";
+                zip.generateAsync({type:"blob"}).then(function(content) {
+                    saveAs(content, `Pquick_Event_${EVENT_ID}_Photos.zip`);
+                    progressEl.classList.add('hidden'); progressEl.classList.remove('flex');
+                    toggleAll(false); // ניקוי בחירה בסיום
+                });
+            }
+
+            window.downloadSelected = function() {
+                const items = uploadsData.filter(item => selectedItems.has(String(item.id)));
+                downloadMultiple(items);
+            };
+
+            window.downloadAll = function() {
+                downloadMultiple(uploadsData);
+            };
 
             window.printItem = async function(id, imageUrl) {
                 const printWindow = window.open('', '_blank');
@@ -879,23 +1022,11 @@ class Pquick_AR_Core {
                         @page { margin: 0; }
                         html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: white; }
                         body { display: flex; justify-content: center; align-items: center; }
-                        
-                        /* קונטיינר ההדפסה יתאים את עצמו לגודל הטבעי של מסגרת ה-PNG (Overlay) */
                         .print-wrapper { position: relative; width: 100%; height: 100%; overflow: hidden; display: flex; justify-content: center; align-items: center;}
-                        
-                        /* ביטול מרווחים נסתרים בתחתית (line-height: 0) */
                         .print-container { position: relative; max-width: 100%; max-height: 100%; overflow: hidden; display: block; line-height: 0; }
-                        
-                        /* המסגרת מכתיבה את הגודל ולעולם לא נחתכת */
                         .overlay { width: 100%; height: auto; max-height: 100vh; position: relative; z-index: 2; display: block; object-fit: contain; }
-                        
-                        /* תמונת האורח נמתחת על האחוזים שזוהו באזור השקוף */
                         .photo { position: absolute; width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%; object-fit: cover; z-index: 1; }
-                        
-                        @media print { 
-                            html, body { overflow: hidden !important; }
-                            .print-wrapper { page-break-inside: avoid; page-break-after: avoid; }
-                        }
+                        @media print { html, body { overflow: hidden !important; } .print-wrapper { page-break-inside: avoid; page-break-after: avoid; } }
                     </style>
                 </head>
                 <body>
@@ -955,12 +1086,7 @@ class Pquick_AR_Core {
             <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
             <script>
-                // --- פקודת דיבאג חכמה לקונסולה ---
-                console.log("=== Pquick App Debug ===");
-                console.log("App Type:", "AR Scanner");
-                console.log("Has Logo:", <?php echo $has_logo ? 'true' : 'false'; ?>);
-                console.log("Logo URL from DB:", "<?php echo esc_js($logo_url); ?>");
-                console.log("=========================");
+                console.log("=== Pquick App Debug ===\nApp Type: AR Scanner\nHas Logo: <?php echo $has_logo ? 'true' : 'false'; ?>\nLogo URL from DB: <?php echo esc_js($logo_url); ?>\n=========================");
             </script>
             <style>
                 body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Alef', sans-serif;}
