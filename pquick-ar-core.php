@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Pquick AR Core
  * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב.
- * Version: 16.0.6
+ * Version: 16.0.7
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -859,9 +859,11 @@ class Pquick_AR_Core {
                         html += `
                             <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col item-animate relative group">
                                 <div class="absolute top-2 right-2 bg-pquick-dark text-white font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-md z-30 border-2 border-white">${item.copies}x</div>
-                                <div class="absolute top-2 left-2 z-40 bg-white rounded-md shadow flex items-center justify-center w-8 h-8">
+                                
+                                <div class="absolute top-2 left-2 z-50 bg-white rounded-md shadow flex items-center justify-center w-8 h-8">
                                     <input type="checkbox" value="${item.id}" class="w-5 h-5 cursor-pointer text-pquick-orange focus:ring-pquick-orange border-gray-300 rounded" onchange="toggleSelection('${item.id}', this.checked)" ${isChecked}>
                                 </div>
+                                
                                 ${item.hasVideo ? `<div class="absolute top-2 left-12 bg-pquick-orange text-pquick-dark w-8 h-8 rounded-md flex items-center justify-center shadow-md z-30"><i class="fa-solid fa-video"></i></div>` : ''}
                                 
                                 <div class="relative bg-gray-100 overflow-hidden rounded-t-xl">
@@ -918,7 +920,7 @@ class Pquick_AR_Core {
                 updateStats();
             }
 
-            // --- מנגנון מיזוג תמונות (Canvas) להורדה ---
+            // --- מנגנון מיזוג תמונות משופר להורדה ---
             async function getOverlayImage() {
                 if (cachedOverlayImg) return cachedOverlayImg;
                 return new Promise((resolve, reject) => {
@@ -938,16 +940,46 @@ class Pquick_AR_Core {
                     canvas.height = overlay.height;
                     const ctx = canvas.getContext('2d');
 
+                    // תיקון: צביעת הרקע בלבן כדי למנוע שקיפות שהופכת לשחור
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
                     const photo = new Image();
                     photo.crossOrigin = "Anonymous";
                     photo.onload = () => {
-                        const px = (LAYOUT.l / 100) * canvas.width;
-                        const py = (LAYOUT.t / 100) * canvas.height;
-                        const pw = (LAYOUT.w / 100) * canvas.width;
-                        const ph = (LAYOUT.h / 100) * canvas.height;
-                        ctx.drawImage(photo, px, py, pw, ph);
+                        // חישוב מיקום היעד המקורי באחוזים
+                        const targetX = (LAYOUT.l / 100) * canvas.width;
+                        const targetY = (LAYOUT.t / 100) * canvas.height;
+                        const targetW = (LAYOUT.w / 100) * canvas.width;
+                        const targetH = (LAYOUT.h / 100) * canvas.height;
+
+                        // תיקון: הוספת "דימום" (Bleed) למניעת פס שחור מסביב
+                        const bleed = 3; 
+                        const finalX = targetX - bleed;
+                        const finalY = targetY - bleed;
+                        const finalW = targetW + (bleed * 2);
+                        const finalH = targetH + (bleed * 2);
+
+                        // תיקון: אלגוריתם Object-Fit Cover שחותך שוליים עודפים במקום למעוך
+                        const imgRatio = photo.width / photo.height;
+                        const destRatio = finalW / finalH;
+                        let sX = 0, sY = 0, sW = photo.width, sH = photo.height;
+
+                        if (imgRatio > destRatio) {
+                            sW = photo.height * destRatio;
+                            sX = (photo.width - sW) / 2;
+                        } else {
+                            sH = photo.width / destRatio;
+                            sY = (photo.height - sH) / 2;
+                        }
+
+                        // ציור התמונה החתוכה
+                        ctx.drawImage(photo, sX, sY, sW, sH, finalX, finalY, finalW, finalH);
+                        
+                        // ציור המסגרת מעל
                         ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.92));
+                        
+                        resolve(canvas.toDataURL('image/jpeg', 0.95)); // שמירה באיכות גבוהה 95%
                     };
                     photo.onerror = reject;
                     photo.src = photoUrl;
