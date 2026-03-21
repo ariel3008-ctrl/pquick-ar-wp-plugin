@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Pquick AR Core
- * Description: מערכת הליבה. כוללת קימפול מציאות רבודה (AR) ישירות בדפדפן של האורח (Client-Side), העלאה ישירה ל-AWS S3, וסורק דינמי.
- * Version: 17.0.0
+ * Description: גרסת הענן הסופית (19.4.0). כולל מערכת QR לוקאלית חסינה ל-CORS וקימפול S3 יציב.
+ * Version: 19.4.0
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -44,7 +44,7 @@ class Pquick_AR_Core {
         ?>
         <div class="wrap">
             <h1><span class="dashicons dashicons-cloud" style="font-size: 28px; margin-top: 5px; color: #ffb800;"></span> הגדרות ענן Pquick AR (AWS S3)</h1>
-            <p>כדי לשמור על מהירות האתר ולמנוע קריסה באירועים, כל התמונות וסרטוני הוידאו של האורחים יטוסו ישירות לענן של Amazon.</p>
+            <p>הגרסה הסופית: תמונות וסרטונים עולים ל-S3. פונקציית Lambda באמזון דואגת לקמפל אותם ל-AR באופן אוטומטי.</p>
             <form method="post" action="options.php" style="background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 600px;">
                 <?php settings_fields( 'pquick_aws_settings_group' ); ?>
                 <?php do_settings_sections( 'pquick_aws_settings_group' ); ?>
@@ -296,7 +296,6 @@ class Pquick_AR_Core {
         if ( isset( $_POST['pquick_photo_l'] ) ) update_post_meta( $post_id, '_pquick_photo_l', floatval( $_POST['pquick_photo_l'] ) );
     }
 
-    // פונקציית העלאה מאובטחת ל-AWS S3 בשיטת Signature V4
     private function upload_to_s3( $file_path, $s3_file_name, $content_type, $bucket, $region, $access_key, $secret_key ) {
         $host = $bucket . '.s3.' . $region . '.amazonaws.com';
         $uri = '/' . ltrim($s3_file_name, '/');
@@ -370,7 +369,6 @@ class Pquick_AR_Core {
             }
         }
 
-        // הגדרות AWS
         $aws_bucket = get_option('pquick_aws_bucket');
         $aws_region = get_option('pquick_aws_region');
         $aws_access = get_option('pquick_aws_access_key');
@@ -380,7 +378,7 @@ class Pquick_AR_Core {
         $time_stamp = time();
         $upload_dir = wp_upload_dir();
         
-        // --- 1. שמירת תמונה (JPG) ---
+        // 1. שמירת תמונה (JPG)
         $image_parts = explode(";base64,", $image_base64);
         $image_base64_decoded = base64_decode($image_parts[1]);
         $image_name = 'pquick_evt_' . $event_id . '_' . $time_stamp . '.jpg';
@@ -388,31 +386,24 @@ class Pquick_AR_Core {
         file_put_contents($temp_image_path, $image_base64_decoded);
         
         $final_image_url = '';
+        $final_mind_url = ''; 
+        
         if ($use_aws) {
             $s3_path = 'events/' . $event_id . '/' . $image_name;
             $s3_url = $this->upload_to_s3($temp_image_path, $s3_path, 'image/jpeg', $aws_bucket, $aws_region, $aws_access, $aws_secret);
-            if ($s3_url) { $final_image_url = $s3_url; unlink($temp_image_path); } 
-            else { $final_image_url = $upload_dir['url'] . '/' . $image_name; }
+            if ($s3_url) { 
+                $final_image_url = $s3_url; 
+                $s3_mind_path = str_replace('.jpg', '.mind', $s3_path);
+                $final_mind_url = 'https://' . $aws_bucket . '.s3.' . $aws_region . '.amazonaws.com/' . $s3_mind_path;
+                unlink($temp_image_path); 
+            } else { 
+                $final_image_url = $upload_dir['url'] . '/' . $image_name; 
+            }
         } else {
             $final_image_url = $upload_dir['url'] . '/' . $image_name;
         }
 
-        // --- 2. שמירת קובץ ה-Mind שקומפל בדפדפן ---
-        $mind_file = $request->get_file_params()['mind_file'] ?? null;
-        $final_mind_url = '';
-        if ( $mind_file && $mind_file['error'] === UPLOAD_ERR_OK ) {
-            $mind_name = 'pquick_evt_' . $event_id . '_' . $time_stamp . '.mind';
-            if ($use_aws) {
-                $s3_mind_path = 'events/' . $event_id . '/' . $mind_name;
-                $s3_m_url = $this->upload_to_s3($mind_file['tmp_name'], $s3_mind_path, 'application/octet-stream', $aws_bucket, $aws_region, $aws_access, $aws_secret);
-                if ($s3_m_url) { $final_mind_url = $s3_m_url; }
-            } else {
-                $movefile = wp_handle_upload( $mind_file, array( 'test_form' => false ) );
-                if ( $movefile && ! isset( $movefile['error'] ) ) { $final_mind_url = $movefile['url']; }
-            }
-        }
-
-        // --- 3. טיפול בוידאו ---
+        // 2. טיפול בוידאו
         $video_file = $request->get_file_params()['video_file'] ?? null;
         $final_video_url = '';
         if ( $video_file && $video_file['error'] === UPLOAD_ERR_OK ) {
@@ -429,14 +420,13 @@ class Pquick_AR_Core {
             }
         }
 
-        // יצירת הרשומה ב-DB
         $post_id = wp_insert_post( array( 'post_type' => 'pquick_media', 'post_title' => 'Upload #' . $time_stamp, 'post_status' => 'publish' ) );
         update_post_meta( $post_id, '_pquick_parent_event', $event_id );
         update_post_meta( $post_id, '_pquick_image_url', $final_image_url );
         update_post_meta( $post_id, '_pquick_video_url', $final_video_url );
         update_post_meta( $post_id, '_pquick_mind_url', $final_mind_url );
         update_post_meta( $post_id, '_pquick_copies', $copies );
-        update_post_meta( $post_id, '_pquick_print_status', 'pending' );
+        update_post_meta( $post_id, '_pquick_print_status', 'pending' ); 
 
         return rest_ensure_response( array( 'success' => true, 'media_id' => $post_id ) );
     }
@@ -515,7 +505,6 @@ class Pquick_AR_Core {
             <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
             <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
             <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b', light: '#f9f9f9' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
             </script>
@@ -535,13 +524,15 @@ class Pquick_AR_Core {
                 .btn-magic-contact { background: linear-gradient(270deg, #ffb800, #ff7a7b, #9ad7cf, #ffb800); background-size: 300% 300%; animation: gradientShift 4s ease infinite; color: white; text-shadow: 0px 1px 2px rgba(0,0,0,0.2); }
                 .progress-container { width: 100%; background-color: #e5e7eb; border-radius: 9999px; height: 12px; overflow: hidden; margin-top: 15px; }
                 .progress-bar { height: 100%; background-color: #ffb800; width: 0%; transition: width 0.3s ease; border-radius: 9999px; }
+                /* כוח עליון להצגת הלוגו מול תוספי אופטימיזציה */
+                .force-show-logo { opacity: 1 !important; visibility: visible !important; display: block !important; }
             </style>
         </head>
         <body class="text-pquick-dark">
         <div class="app-container relative">
             <header class="p-4 flex justify-center items-center border-b border-gray-100 sticky top-0 bg-white z-10 shadow-sm min-h-[70px]">
                 <?php if($has_logo): ?>
-                    <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" class="h-10 w-auto object-contain shrink-0 drop-shadow-sm skip-lazy" data-no-lazy="1" data-skip-lazy="1" style="min-width: 60px; max-width: 150px;">
+                    <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" class="h-10 w-auto object-contain shrink-0 drop-shadow-sm force-show-logo" data-no-lazy="1" data-skip-lazy="1" loading="eager" fetchpriority="high" style="min-width: 60px; max-width: 150px;">
                 <?php else: ?>
                     <div class="flex flex-col items-center justify-center leading-none">
                         <span class="text-3xl font-bold text-pquick-dark" style="font-family: 'Alef', sans-serif;">Pquick</span>
@@ -614,9 +605,9 @@ class Pquick_AR_Core {
 
                 <div id="step-loading" class="step items-center justify-center">
                     <div class="text-center w-full max-w-xs mx-auto">
-                        <i class="fa-solid fa-microchip text-5xl text-pquick-pink mb-4 animate-pulse" id="loading-icon"></i>
-                        <h2 class="text-xl font-bold" id="loading-title">מכין את קסם ה-AR...</h2>
-                        <p class="text-gray-500 text-sm mt-2" id="loading-subtitle">משתמש בכוח העיבוד של המכשיר שלך, אנא המתן ולא לסגור את המסך!</p>
+                        <i class="fa-solid fa-cloud-arrow-up text-5xl text-pquick-orange mb-4 animate-bounce" id="loading-icon"></i>
+                        <h2 class="text-xl font-bold" id="loading-title">מעלה קבצים...</h2>
+                        <p class="text-gray-500 text-sm mt-2" id="loading-subtitle">מגבה הכל באמזון בבטחה, אנא המתן</p>
                         <div class="progress-container"><div id="upload-progress-bar" class="progress-bar"></div></div>
                         <p id="upload-progress-text" class="text-pquick-dark font-bold mt-2">0%</p>
                     </div>
@@ -626,7 +617,11 @@ class Pquick_AR_Core {
                     <div class="w-20 h-20 bg-pquick-lightgreen rounded-full flex items-center justify-center mx-auto mb-4 text-pquick-dark text-4xl shadow-md mt-4"><i class="fa-solid fa-check"></i></div>
                     <h1 class="text-2xl font-bold mb-2">התמונה נשלחה להדפסה!</h1>
                     
-                    <div class="bg-pquick-light rounded-xl p-5 text-right my-6 border border-gray-200 shadow-sm">
+                    <button id="btn-guest-share" class="mt-2 mb-4 bg-[#ffb800] text-[#454857] font-bold py-3 px-8 rounded-full shadow-md hover:scale-105 transition-transform inline-flex items-center gap-2">
+                        <i class="fa-solid fa-share-nodes"></i> שתפו את הקסם לחברים!
+                    </button>
+                    
+                    <div class="bg-pquick-light rounded-xl p-5 text-right my-2 border border-gray-200 shadow-sm">
                         <h3 class="font-bold text-lg mb-4 text-center border-b border-gray-200 pb-2">מה עושים עכשיו?</h3>
                         <ul class="space-y-4">
                             <li class="flex items-start gap-3">
@@ -644,7 +639,7 @@ class Pquick_AR_Core {
                         </ul>
                     </div>
 
-                    <button onclick="location.reload()" class="w-full bg-white border-2 border-pquick-dark text-pquick-dark font-bold py-3 rounded-full hover:bg-gray-50 mb-6 transition-colors">
+                    <button onclick="location.reload()" class="w-full bg-white border-2 border-pquick-dark text-pquick-dark font-bold py-3 rounded-full hover:bg-gray-50 mb-6 mt-4 transition-colors">
                         העלה תמונה נוספת
                     </button>
                     
@@ -678,6 +673,7 @@ class Pquick_AR_Core {
                 const inputVideo = document.getElementById('input-video');
                 const imageToCropElement = document.getElementById('image-to-crop');
                 const previewImgElement = document.getElementById('preview-img-element');
+                const btnGuestShare = document.getElementById('btn-guest-share');
                 
                 let cropper = null;
                 let croppedImageDataUrl = null;
@@ -763,39 +759,10 @@ class Pquick_AR_Core {
                 document.getElementById('btn-submit').addEventListener('click', async () => {
                     showStep('step-loading');
                     
-                    let mindBlob = null;
-                    try {
-                        // --- קסם הקימפול בדפדפן של הלקוח ---
-                        const compiler = new window.MINDAR.IMAGE.Compiler();
-                        const img = new Image();
-                        img.src = croppedImageDataUrl;
-                        await new Promise((resolve) => { img.onload = resolve; });
-                        
-                        await compiler.compileImageTargets([img], (progress) => {
-                            document.getElementById('upload-progress-bar').style.width = progress.toFixed(2) + '%';
-                            document.getElementById('upload-progress-text').textContent = progress.toFixed(2) + '%';
-                        });
-                        
-                        const exportedBuffer = await compiler.exportData();
-                        mindBlob = new Blob([exportedBuffer], { type: 'application/octet-stream' });
-                    } catch (err) {
-                        alert('שגיאה ביצירת קובץ ה-AR. נסה מדפדפן כרום או ספארי רגיל (לא דרך אינסטגרם או פייסבוק).');
-                        showStep('step-preview');
-                        return;
-                    }
-
-                    // --- סיום קימפול, מתחיל העלאה ---
-                    document.getElementById('loading-icon').className = 'fa-solid fa-cloud-arrow-up text-5xl text-pquick-orange mb-4 animate-bounce';
-                    document.getElementById('loading-title').textContent = 'מעלה קבצים לענן...';
-                    document.getElementById('loading-subtitle').textContent = 'מגבה הכל באמזון, אנא המתן';
-                    document.getElementById('upload-progress-bar').style.width = '0%';
-                    document.getElementById('upload-progress-text').textContent = '0%';
-
                     const formData = new FormData();
                     formData.append('event_id', EVENT_DATA.id);
                     formData.append('copies', currentQty);
                     formData.append('image_base64', croppedImageDataUrl);
-                    if (mindBlob) formData.append('mind_file', mindBlob, 'target.mind');
                     if (inputVideo.files && inputVideo.files[0]) formData.append('video_file', inputVideo.files[0]);
 
                     const xhr = new XMLHttpRequest();
@@ -821,6 +788,21 @@ class Pquick_AR_Core {
                     };
                     xhr.onerror = function() { alert('שגיאת תקשורת, בדוק חיבור לאינטרנט.'); showStep('step-preview'); };
                     xhr.send(formData);
+                });
+
+                // פונקציית שיתוף לאורח
+                btnGuestShare.addEventListener('click', async () => {
+                    const shareData = {
+                        title: 'Pquick AR Events',
+                        text: 'העליתי תמונה לאירוע! בואו לראות ולהעלות גם:',
+                        url: window.location.href
+                    };
+                    if (navigator.share && navigator.canShare(shareData)) {
+                        try { await navigator.share(shareData); } catch (err) {}
+                    } else {
+                        navigator.clipboard.writeText(window.location.href);
+                        alert('הקישור הועתק! תוכל לשלוח אותו לחברים.');
+                    }
                 });
             });
         </script>
@@ -854,6 +836,7 @@ class Pquick_AR_Core {
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
             <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
             </script>
@@ -878,7 +861,7 @@ class Pquick_AR_Core {
                     <div class="h-8 w-px bg-gray-300"></div>
                     <div>
                         <h1 class="text-xl font-bold leading-none"><?php echo esc_html($event_name); ?></h1>
-                        <span class="text-sm text-green-500 font-bold flex items-center gap-1"><span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span> מחובר לשרת</span>
+                        <span class="text-sm text-green-500 font-bold flex items-center gap-1"><span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span> מחובר לשרת ענן באמזון</span>
                     </div>
                 </div>
                 <div class="flex gap-6">
@@ -973,9 +956,8 @@ class Pquick_AR_Core {
                 return '';
             }
 
-            function generateQRCodeLink(mediaId) {
-                const url = window.location.origin + window.location.pathname + "?pquick_app=scanner&media_id=" + mediaId;
-                return 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=ffb800&data=' + encodeURIComponent(url);
+            function getScannerURL(mediaId) {
+                return window.location.origin + window.location.pathname + "?pquick_app=scanner&event_id=" + EVENT_ID + "&media_id=" + mediaId;
             }
 
             function render() {
@@ -1063,7 +1045,7 @@ class Pquick_AR_Core {
                 });
             }
 
-            async function generateMergedDataURL(photoUrl, qrUrl = null) {
+            async function generateMergedDataURL(photoUrl, qrUrlText = null) {
                 const overlay = await getOverlayImage();
                 return new Promise((resolve, reject) => {
                     const canvas = document.createElement('canvas');
@@ -1076,6 +1058,7 @@ class Pquick_AR_Core {
 
                     const photo = new Image();
                     photo.crossOrigin = "Anonymous";
+                    
                     photo.onload = () => {
                         const targetX = (LAYOUT.l / 100) * canvas.width;
                         const targetY = (LAYOUT.t / 100) * canvas.height;
@@ -1102,22 +1085,26 @@ class Pquick_AR_Core {
                         ctx.drawImage(photo, sX, sY, sW, sH, finalX, finalY, finalW, finalH);
                         ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
                         
-                        // הוספת ה-QR לתמונה אם התבקש
-                        if (qrUrl) {
-                            const qrImg = new Image();
-                            qrImg.crossOrigin = "Anonymous";
-                            qrImg.onload = () => {
-                                // ממקם את ה-QR בפינה ימנית תחתונה (ניתן לשנות בעתיד)
-                                const qrSize = canvas.width * 0.15;
-                                ctx.drawImage(qrImg, canvas.width - qrSize - 20, canvas.height - qrSize - 20, qrSize, qrSize);
-                                resolve(canvas.toDataURL('image/jpeg', 0.95));
-                            };
-                            qrImg.src = qrUrl;
+                        if (qrUrlText) {
+                            // ייצור QR לוקאלי כדי למנוע חסימות CORS
+                            QRCode.toDataURL(qrUrlText, { margin: 1, width: canvas.width * 0.15, color: { dark: '#ffb800', light: '#ffffff' } }, (err, url) => {
+                                if (err) return resolve(canvas.toDataURL('image/jpeg', 0.95));
+                                const qrImg = new Image();
+                                qrImg.onload = () => {
+                                    const qrSize = canvas.width * 0.15;
+                                    ctx.drawImage(qrImg, canvas.width - qrSize - 20, canvas.height - qrSize - 20, qrSize, qrSize);
+                                    resolve(canvas.toDataURL('image/jpeg', 0.95));
+                                };
+                                qrImg.src = url;
+                            });
                         } else {
                             resolve(canvas.toDataURL('image/jpeg', 0.95));
                         }
                     };
-                    photo.onerror = reject;
+                    
+                    photo.onerror = () => {
+                        reject(new Error("CORS Error: S3 Bucket blocked the image download."));
+                    };
                     photo.src = photoUrl;
                 });
             }
@@ -1133,7 +1120,10 @@ class Pquick_AR_Core {
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
-                } catch(e) { alert("שגיאה בהורדת התמונה. בדוק חיבור לאינטרנט."); }
+                } catch(e) { 
+                    console.error(e);
+                    alert("שגיאה בהורדת התמונה: חובה לאשר CORS בהגדרות ה-S3 של אמזון (הוראות נמסרו)."); 
+                }
                 btnElement.innerHTML = originalHtml;
             };
 
@@ -1154,8 +1144,8 @@ class Pquick_AR_Core {
                     progressText.innerText = `מעבד תמונה ${count} מתוך ${itemsToDownload.length}...`;
                     progressBar.style.width = `${(count/itemsToDownload.length)*100}%`;
                     try {
-                        const qrUrl = generateQRCodeLink(item.id);
-                        const dataUrl = await generateMergedDataURL(item.image, qrUrl);
+                        const qrUrlText = getScannerURL(item.id);
+                        const dataUrl = await generateMergedDataURL(item.image, qrUrlText);
                         const base64Data = dataUrl.split(',')[1];
                         folder.file(`Pquick_Photo_${item.id}.jpg`, base64Data, {base64: true});
                     } catch(e) { console.error("Failed to merge image", item.id); }
@@ -1173,35 +1163,40 @@ class Pquick_AR_Core {
             window.downloadAll = function() { downloadMultiple(uploadsData); };
 
             window.printItem = async function(id, imageUrl) {
-                const qrUrl = generateQRCodeLink(id);
-                const mergedDataUrl = await generateMergedDataURL(imageUrl, qrUrl);
-                
-                const printWindow = window.open('', '_blank');
-                const printHTML = `
-                <!DOCTYPE html>
-                <html lang="he" dir="rtl">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>הדפסת תמונה #${id}</title>
-                    <style>
-                        @page { margin: 0; }
-                        html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: white; }
-                        body { display: flex; justify-content: center; align-items: center; }
-                        img { max-width: 100%; max-height: 100vh; object-fit: contain; }
-                    </style>
-                </head>
-                <body>
-                    <img src="${mergedDataUrl}" onload="window.print();">
-                </body>
-                </html>`;
-                printWindow.document.write(printHTML);
-                printWindow.document.close();
-                
-                const itemIndex = uploadsData.findIndex(item => item.id == id);
-                if (itemIndex > -1) {
-                    uploadsData[itemIndex].status = 'printed';
-                    render();
-                    try { await fetch('/wp-json/pquick/v1/print/' + id, { method: 'POST' }); } catch(e) {}
+                try {
+                    const qrUrlText = getScannerURL(id);
+                    const mergedDataUrl = await generateMergedDataURL(imageUrl, qrUrlText);
+                    
+                    const printWindow = window.open('', '_blank');
+                    const printHTML = `
+                    <!DOCTYPE html>
+                    <html lang="he" dir="rtl">
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>הדפסת תמונה #${id}</title>
+                        <style>
+                            @page { margin: 0; }
+                            html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: white; }
+                            body { display: flex; justify-content: center; align-items: center; }
+                            img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                        </style>
+                    </head>
+                    <body>
+                        <img src="${mergedDataUrl}" onload="window.print();">
+                    </body>
+                    </html>`;
+                    printWindow.document.write(printHTML);
+                    printWindow.document.close();
+                    
+                    const itemIndex = uploadsData.findIndex(item => item.id == id);
+                    if (itemIndex > -1) {
+                        uploadsData[itemIndex].status = 'printed';
+                        render();
+                        try { await fetch('/wp-json/pquick/v1/print/' + id, { method: 'POST' }); } catch(e) {}
+                    }
+                } catch(e) {
+                    console.error(e);
+                    alert("שגיאה בהכנת התמונה להדפסה: חובה לאשר CORS בהגדרות ה-S3 של אמזון (הוראות נמסרו).");
                 }
             };
 
@@ -1213,7 +1208,7 @@ class Pquick_AR_Core {
         <?php
     }
 
-    // --- אפליקציה 3: סורק ה-AR (עכשיו דינמי לחלוטין!) ---
+    // --- אפליקציה 3: סורק ה-AR ---
     private function output_scanner_app( $event_id ) {
         if (!isset($_GET['media_id'])) {
             wp_die('קוד ה-QR לא תקין. חסר מזהה תמונה.', 'שגיאה', array('response' => 400));
@@ -1221,7 +1216,7 @@ class Pquick_AR_Core {
         
         $media_id = intval($_GET['media_id']);
         
-        // שליפת הוידאו וקובץ ה-mind הספציפיים לתמונה הזו
+        // שליפת הוידאו וקובץ ה-mind הספציפיים לתמונה הזו (שהלמבדה ייצרה בענן)
         $video_url = get_post_meta($media_id, '_pquick_video_url', true);
         $mind_url = get_post_meta($media_id, '_pquick_mind_url', true);
         
@@ -1232,6 +1227,9 @@ class Pquick_AR_Core {
         $custom_logo = get_post_meta($event_id, '_pquick_event_logo', true);
         $logo_url = $custom_logo ? $custom_logo : '';
         $has_logo = ! empty( trim( $logo_url ) );
+
+        // שולפים את הפרופורציות של המגנט כדי למתוח את הוידאו בול עליו!
+        $print_format = get_post_meta($event_id, '_pquick_print_format', true) ?: '0.75';
         ?>
         <!DOCTYPE html>
         <html lang="he" dir="rtl">
@@ -1245,50 +1243,76 @@ class Pquick_AR_Core {
             <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
             <style>
-                body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Alef', sans-serif;}
+                body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Alef', sans-serif; position: fixed; inset: 0; }
                 .a-enter-vr, .a-enter-ar { display: none !important; }
-                #ar-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; display: none; }
-                #scanner-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
+                #ar-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; display: block; }
+                #scanner-ui { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+                
+                /* מרכוז אבסולוטי - חסין לתזוזות ספארי */
+                #scan-guide {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 75%;
+                    max-width: 300px;
+                    aspect-ratio: 3/4;
+                    border: 2px solid rgba(255,255,255,0.5);
+                    border-radius: 0.75rem;
+                    box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+                    z-index: 20;
+                    pointer-events: none;
+                }
+
                 .scan-line { width: 80%; height: 2px; background: #ffb800; position: absolute; top: 30%; left: 10%; box-shadow: 0 0 10px #ffb800; animation: scan 2s infinite alternate; border-radius: 50%; }
                 @keyframes scan { 0% { top: 30%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 70%; opacity: 0; } }
+                /* כוח עליון להצגת הלוגו מול תוספי אופטימיזציה */
+                .force-show-logo { opacity: 1 !important; visibility: visible !important; display: block !important; }
             </style>
         </head>
         <body>
             <div id="scanner-ui">
-                <div class="flex justify-between items-start">
-                    <div class="bg-black/50 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2">
+                <div class="absolute top-0 w-full p-6 flex justify-between items-start pointer-events-auto z-50">
+                    <div class="bg-black/50 backdrop-blur-md rounded-full px-5 py-2 flex items-center justify-center shadow-lg">
                         <?php if($has_logo): ?>
-                            <img src="<?php echo esc_url($logo_url); ?>" alt="Pquick Logo" class="h-8 w-auto block object-contain shrink-0 drop-shadow-sm skip-lazy" data-no-lazy="1" data-skip-lazy="1" style="min-width: 40px; max-width: 120px;">
+                            <img src="<?php echo esc_url($logo_url); ?>" alt="Pquick Logo" class="h-8 w-auto object-contain shrink-0 drop-shadow-sm force-show-logo" data-no-lazy="1" data-skip-lazy="1" loading="eager" fetchpriority="high" style="min-width: 40px; max-width: 120px;">
                         <?php else: ?>
                             <span class="text-lg font-bold text-white">Pquick<span class="text-[#ffb800]">AR</span></span>
                         <?php endif; ?>
                     </div>
+
+                    <button id="btn-share" class="bg-black/50 backdrop-blur-md rounded-full w-12 h-12 flex items-center justify-center shadow-lg text-white hover:text-[#ffb800] transition-colors active:scale-95">
+                        <i class="fa-solid fa-arrow-up-from-bracket text-lg"></i>
+                    </button>
                 </div>
                 
-                <div class="relative w-full h-full flex items-center justify-center">
-                    <div class="border-2 border-white/50 w-[80%] aspect-[3/4] rounded-xl relative">
-                        <div class="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-[#ffb800] rounded-tl-lg"></div>
-                        <div class="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-[#ffb800] rounded-tr-lg"></div>
-                        <div class="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-[#ffb800] rounded-bl-lg"></div>
-                        <div class="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-[#ffb800] rounded-br-lg"></div>
-                        <div class="scan-line" id="scan-line"></div>
+                <div id="scan-guide">
+                    <div class="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-[#ffb800] rounded-tl-lg"></div>
+                    <div class="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-[#ffb800] rounded-tr-lg"></div>
+                    <div class="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-[#ffb800] rounded-bl-lg"></div>
+                    <div class="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-[#ffb800] rounded-br-lg"></div>
+                    <div class="scan-line" id="scan-line"></div>
+                </div>
+
+                <div class="absolute bottom-10 w-full px-6 flex justify-center z-50 pointer-events-none">
+                    <div class="bg-black/60 backdrop-blur-md rounded-2xl p-4 text-center w-full max-w-sm shadow-xl">
+                        <p class="text-white font-bold" id="status-text"><i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...</p>
                     </div>
                 </div>
-
-                <div class="bg-black/60 backdrop-blur-md rounded-2xl p-4 text-center pointer-events-auto">
-                    <p class="text-white font-bold" id="status-text"><i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...</p>
-                    <button id="btn-unmute" class="hidden mt-3 bg-[#ffb800] text-[#454857] font-bold py-2 px-6 rounded-full w-full shadow-lg"><i class="fa-solid fa-volume-high mr-2"></i> הפעל סאונד</button>
-                </div>
+                
+                <button id="btn-unmute" class="hidden absolute top-[65%] left-1/2 transform -translate-x-1/2 bg-[#ffb800] text-[#454857] font-bold py-3 px-8 rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.5)] z-[9999] pointer-events-auto active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap">
+                    <i class="fa-solid fa-volume-high"></i> הפעל סאונד
+                </button>
             </div>
 
-            <div id="ar-container" style="display:block;">
+            <div id="ar-container">
                 <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
                     <a-assets timeout="10000">
                         <video id="ar-video" src="<?php echo esc_url($video_url); ?>" loop crossorigin="anonymous" playsinline webkit-playsinline muted></video>
                     </a-assets>
                     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
                     <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
-                        <a-video src="#ar-video" position="0 0 0" height="0.552" width="1" rotation="0 0 0"></a-video>
+                        <a-video src="#ar-video" position="0 0 0" width="1" height="<?php echo (1 / floatval($print_format)); ?>" rotation="0 0 0"></a-video>
                     </a-entity>
                 </a-scene>
             </div>
@@ -1300,14 +1324,15 @@ class Pquick_AR_Core {
                     const statusText = document.getElementById('status-text');
                     const scanLine = document.getElementById('scan-line');
                     const btnUnmute = document.getElementById('btn-unmute');
+                    const btnShare = document.getElementById('btn-share');
 
-                    // פתרון למניעת מסך לבן בוידאו
-                    videoEl.addEventListener('loadedmetadata', () => {
-                        const ratio = videoEl.videoWidth / videoEl.videoHeight;
-                        const aVideo = document.querySelector('a-video');
-                        aVideo.setAttribute('width', '1');
-                        aVideo.setAttribute('height', (1 / ratio).toString());
-                    });
+                    // בדיקה מול אמזון אם הלמבדה קרסה או הקובץ חסר
+                    fetch('<?php echo esc_url($mind_url); ?>', { method: 'HEAD' })
+                        .then(res => {
+                            if (!res.ok) {
+                                statusText.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500 mr-2"></i> שגיאה: קובץ ה-AR חסר! ודא שהלמבדה באמזון הוגדרה עם 2048MB זיכרון.';
+                            }
+                        }).catch(e => console.log('S3 Check failed due to CORS, continuing normally...'));
 
                     if(targetEntity) {
                         targetEntity.addEventListener("targetFound", event => {
@@ -1325,10 +1350,32 @@ class Pquick_AR_Core {
                         });
                     }
 
+                    // הפעלה/השתקת סאונד
                     btnUnmute.addEventListener('click', () => {
                         videoEl.muted = !videoEl.muted;
-                        if(videoEl.muted) { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-xmark mr-2"></i> הפעל סאונד'; } 
-                        else { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-high mr-2"></i> השתק סאונד'; }
+                        if(videoEl.muted) { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-xmark"></i> הפעל סאונד'; } 
+                        else { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-high"></i> השתק סאונד'; }
+                    });
+
+                    // מערכת השיתוף לאייפון ומכשירים ניידים
+                    btnShare.addEventListener('click', async () => {
+                        const shareData = {
+                            title: 'Pquick AR',
+                            text: 'וואו! התמונה מהאירוע התעוררה לחיים! סרקו גם אתם:',
+                            url: window.location.href
+                        };
+
+                        if (navigator.share && navigator.canShare(shareData)) {
+                            try {
+                                await navigator.share(shareData);
+                            } catch (err) {
+                                console.log('Share cancelled', err);
+                            }
+                        } else {
+                            // אם זה מחשב או דפדפן שלא תומך - נעתיק את הקישור ללוח
+                            navigator.clipboard.writeText(window.location.href);
+                            alert('הקישור הועתק! תוכל לשלוח אותו לחברים.');
+                        }
                     });
                 });
             </script>
