@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Pquick AR Core
- * Description: מערכת הליבה. מסגרות מוצגות בשלמותן ללא חיתוך, הלבשה איכותית מדויקת (ללא scale), ולוגו/טקסט יציב. חיבור ישיר ל-AWS S3.
- * Version: 16.0.8
+ * Description: מערכת הליבה. כוללת קימפול מציאות רבודה (AR) ישירות בדפדפן של האורח (Client-Side), העלאה ישירה ל-AWS S3, וסורק דינמי.
+ * Version: 17.0.0
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -25,7 +25,7 @@ class Pquick_AR_Core {
         add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
         add_action( 'admin_init', array( $this, 'register_aws_settings' ) );
         
-        // אישור העלאת קבצי SVG למערכת עבור הלוגואים
+        // אישור העלאת קבצי SVG
         add_filter( 'upload_mimes', array( $this, 'allow_svg_uploads' ) );
     }
 
@@ -260,29 +260,22 @@ class Pquick_AR_Core {
 
         $site_url = get_site_url();
         $guest_url = add_query_arg( array( 'pquick_app' => 'upload', 'event_id' => $post->ID ), $site_url );
-        $scanner_url = add_query_arg( array( 'pquick_app' => 'scanner', 'event_id' => $post->ID ), $site_url );
         $operator_url = add_query_arg( array( 'pquick_app' => 'operator', 'event_id' => $post->ID ), $site_url );
         
         $qr_upload_api = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=' . urlencode($guest_url);
-        $qr_scanner_api = 'https://api.qrserver.com/v1/create-qr-code/?size=250x250&color=ffb800&data=' . urlencode($scanner_url);
         ?>
         <div style="text-align: center;">
-            <p><strong>QR 1: להעלאת תמונות (שלטים בשולחנות)</strong></p>
+            <p><strong>QR: להעלאת תמונות (שלטים בשולחנות)</strong></p>
             <img src="<?php echo esc_url($qr_upload_api); ?>" style="width: 100%; max-width: 150px; border: 1px solid #ccc; padding: 5px; border-radius: 8px;">
             <p style="margin-top: 5px;">
                 <a href="<?php echo esc_url($qr_upload_api); ?>" download="Upload_QR.png" class="button button-secondary">הורד QR לשולחנות</a>
-            </p>
-            <hr style="margin: 15px 0;">
-            <p><strong>QR 2: לסורק ה-AR</strong></p>
-            <img src="<?php echo esc_url($qr_scanner_api); ?>" style="width: 100%; max-width: 150px; border: 1px solid #ccc; padding: 5px; border-radius: 8px;">
-            <p style="margin-top: 5px;">
-                <a href="<?php echo esc_url($qr_scanner_api); ?>" download="Scanner_QR.png" class="button button-secondary">הורד QR להדפסה בתמונה</a>
             </p>
             <hr style="margin: 15px 0;">
             <p><strong>עמדת המפעיל (ללא התחברות):</strong></p>
             <p>
                 <button type="button" class="button button-primary" onclick="navigator.clipboard.writeText('<?php echo esc_js($operator_url); ?>'); alert('הקישור הועתק! שלח אותו למפעיל');">העתק קישור למפעיל</button>
             </p>
+            <p style="font-size:11px; color:#666;">הערה: ה-QR לסורק יווצר אוטומטית על ידי המפעיל על כל תמונה.</p>
         </div>
         <?php
     }
@@ -384,12 +377,13 @@ class Pquick_AR_Core {
         $aws_secret = get_option('pquick_aws_secret_key');
         $use_aws = ($aws_bucket && $aws_region && $aws_access && $aws_secret);
 
-        // שמירת התמונה זמנית
+        $time_stamp = time();
+        $upload_dir = wp_upload_dir();
+        
+        // --- 1. שמירת תמונה (JPG) ---
         $image_parts = explode(";base64,", $image_base64);
         $image_base64_decoded = base64_decode($image_parts[1]);
-        $time_stamp = time();
         $image_name = 'pquick_evt_' . $event_id . '_' . $time_stamp . '.jpg';
-        $upload_dir = wp_upload_dir();
         $temp_image_path = $upload_dir['path'] . '/' . $image_name;
         file_put_contents($temp_image_path, $image_base64_decoded);
         
@@ -397,17 +391,28 @@ class Pquick_AR_Core {
         if ($use_aws) {
             $s3_path = 'events/' . $event_id . '/' . $image_name;
             $s3_url = $this->upload_to_s3($temp_image_path, $s3_path, 'image/jpeg', $aws_bucket, $aws_region, $aws_access, $aws_secret);
-            if ($s3_url) {
-                $final_image_url = $s3_url;
-                unlink($temp_image_path); // מוחק מהשרת המקומי!
-            } else {
-                $final_image_url = $upload_dir['url'] . '/' . $image_name; // גיבוי אם AWS נכשל
-            }
+            if ($s3_url) { $final_image_url = $s3_url; unlink($temp_image_path); } 
+            else { $final_image_url = $upload_dir['url'] . '/' . $image_name; }
         } else {
             $final_image_url = $upload_dir['url'] . '/' . $image_name;
         }
 
-        // טיפול בוידאו
+        // --- 2. שמירת קובץ ה-Mind שקומפל בדפדפן ---
+        $mind_file = $request->get_file_params()['mind_file'] ?? null;
+        $final_mind_url = '';
+        if ( $mind_file && $mind_file['error'] === UPLOAD_ERR_OK ) {
+            $mind_name = 'pquick_evt_' . $event_id . '_' . $time_stamp . '.mind';
+            if ($use_aws) {
+                $s3_mind_path = 'events/' . $event_id . '/' . $mind_name;
+                $s3_m_url = $this->upload_to_s3($mind_file['tmp_name'], $s3_mind_path, 'application/octet-stream', $aws_bucket, $aws_region, $aws_access, $aws_secret);
+                if ($s3_m_url) { $final_mind_url = $s3_m_url; }
+            } else {
+                $movefile = wp_handle_upload( $mind_file, array( 'test_form' => false ) );
+                if ( $movefile && ! isset( $movefile['error'] ) ) { $final_mind_url = $movefile['url']; }
+            }
+        }
+
+        // --- 3. טיפול בוידאו ---
         $video_file = $request->get_file_params()['video_file'] ?? null;
         $final_video_url = '';
         if ( $video_file && $video_file['error'] === UPLOAD_ERR_OK ) {
@@ -416,9 +421,7 @@ class Pquick_AR_Core {
                 $video_name = 'pquick_evt_' . $event_id . '_' . $time_stamp . '.' . $video_ext;
                 $s3_video_path = 'events/' . $event_id . '/' . $video_name;
                 $s3_vid_url = $this->upload_to_s3($video_file['tmp_name'], $s3_video_path, $video_file['type'], $aws_bucket, $aws_region, $aws_access, $aws_secret);
-                if ($s3_vid_url) {
-                    $final_video_url = $s3_vid_url;
-                }
+                if ($s3_vid_url) { $final_video_url = $s3_vid_url; }
             } else {
                 require_once( ABSPATH . 'wp-admin/includes/file.php' );
                 $movefile = wp_handle_upload( $video_file, array( 'test_form' => false ) );
@@ -426,11 +429,12 @@ class Pquick_AR_Core {
             }
         }
 
+        // יצירת הרשומה ב-DB
         $post_id = wp_insert_post( array( 'post_type' => 'pquick_media', 'post_title' => 'Upload #' . $time_stamp, 'post_status' => 'publish' ) );
-
         update_post_meta( $post_id, '_pquick_parent_event', $event_id );
         update_post_meta( $post_id, '_pquick_image_url', $final_image_url );
         update_post_meta( $post_id, '_pquick_video_url', $final_video_url );
+        update_post_meta( $post_id, '_pquick_mind_url', $final_mind_url );
         update_post_meta( $post_id, '_pquick_copies', $copies );
         update_post_meta( $post_id, '_pquick_print_status', 'pending' );
 
@@ -511,6 +515,7 @@ class Pquick_AR_Core {
             <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
             <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
             <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"></script>
             <script>
                 tailwind.config = { theme: { extend: { colors: { pquick: { dark: '#454857', orange: '#ffb800', lightgreen: '#9ad7cf', pink: '#ff7a7b', light: '#f9f9f9' } }, fontFamily: { sans: ['Alef', 'sans-serif'] } } } }
             </script>
@@ -609,9 +614,9 @@ class Pquick_AR_Core {
 
                 <div id="step-loading" class="step items-center justify-center">
                     <div class="text-center w-full max-w-xs mx-auto">
-                        <i class="fa-solid fa-cloud-arrow-up text-5xl text-pquick-orange mb-4 animate-bounce"></i>
-                        <h2 class="text-xl font-bold">יוצר את הקסם...</h2>
-                        <p class="text-gray-500 text-sm mt-2">מגבה בענן של Amazon, אנא המתן</p>
+                        <i class="fa-solid fa-microchip text-5xl text-pquick-pink mb-4 animate-pulse" id="loading-icon"></i>
+                        <h2 class="text-xl font-bold" id="loading-title">מכין את קסם ה-AR...</h2>
+                        <p class="text-gray-500 text-sm mt-2" id="loading-subtitle">משתמש בכוח העיבוד של המכשיר שלך, אנא המתן ולא לסגור את המסך!</p>
                         <div class="progress-container"><div id="upload-progress-bar" class="progress-bar"></div></div>
                         <p id="upload-progress-text" class="text-pquick-dark font-bold mt-2">0%</p>
                     </div>
@@ -729,7 +734,7 @@ class Pquick_AR_Core {
 
                 document.getElementById('btn-save-crop').addEventListener('click', () => {
                     if (!cropper) return;
-                    const exportWidth = 1200;
+                    const exportWidth = 1000;
                     const exportHeight = exportWidth / EVENT_DATA.printFormat;
                     const canvas = cropper.getCroppedCanvas({ width: exportWidth, height: exportHeight });
                     croppedImageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
@@ -755,12 +760,42 @@ class Pquick_AR_Core {
                 document.getElementById('btn-to-preview').addEventListener('click', () => { if (hasImage && hasVideo) showStep('step-preview'); });
                 document.getElementById('btn-back').addEventListener('click', () => showStep('step-upload'));
 
-                document.getElementById('btn-submit').addEventListener('click', () => {
+                document.getElementById('btn-submit').addEventListener('click', async () => {
                     showStep('step-loading');
+                    
+                    let mindBlob = null;
+                    try {
+                        // --- קסם הקימפול בדפדפן של הלקוח ---
+                        const compiler = new window.MINDAR.IMAGE.Compiler();
+                        const img = new Image();
+                        img.src = croppedImageDataUrl;
+                        await new Promise((resolve) => { img.onload = resolve; });
+                        
+                        await compiler.compileImageTargets([img], (progress) => {
+                            document.getElementById('upload-progress-bar').style.width = progress.toFixed(2) + '%';
+                            document.getElementById('upload-progress-text').textContent = progress.toFixed(2) + '%';
+                        });
+                        
+                        const exportedBuffer = await compiler.exportData();
+                        mindBlob = new Blob([exportedBuffer], { type: 'application/octet-stream' });
+                    } catch (err) {
+                        alert('שגיאה ביצירת קובץ ה-AR. נסה מדפדפן כרום או ספארי רגיל (לא דרך אינסטגרם או פייסבוק).');
+                        showStep('step-preview');
+                        return;
+                    }
+
+                    // --- סיום קימפול, מתחיל העלאה ---
+                    document.getElementById('loading-icon').className = 'fa-solid fa-cloud-arrow-up text-5xl text-pquick-orange mb-4 animate-bounce';
+                    document.getElementById('loading-title').textContent = 'מעלה קבצים לענן...';
+                    document.getElementById('loading-subtitle').textContent = 'מגבה הכל באמזון, אנא המתן';
+                    document.getElementById('upload-progress-bar').style.width = '0%';
+                    document.getElementById('upload-progress-text').textContent = '0%';
+
                     const formData = new FormData();
                     formData.append('event_id', EVENT_DATA.id);
                     formData.append('copies', currentQty);
                     formData.append('image_base64', croppedImageDataUrl);
+                    if (mindBlob) formData.append('mind_file', mindBlob, 'target.mind');
                     if (inputVideo.files && inputVideo.files[0]) formData.append('video_file', inputVideo.files[0]);
 
                     const xhr = new XMLHttpRequest();
@@ -770,7 +805,6 @@ class Pquick_AR_Core {
                             const percentComplete = Math.round((e.loaded / e.total) * 100);
                             document.getElementById('upload-progress-bar').style.width = percentComplete + '%';
                             document.getElementById('upload-progress-text').textContent = percentComplete + '%';
-                            if(percentComplete === 100) document.getElementById('upload-progress-text').textContent = "מעבד קבצים בענן (AWS), אנא המתן...";
                         }
                     };
                     xhr.onload = function() {
@@ -814,7 +848,7 @@ class Pquick_AR_Core {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Pquick AR - לוח מפעיל אירוע</title>
+            <title>Pquick AR - לוח מפעיל</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <link href="https://fonts.googleapis.com/css2?family=Alef:wght@400;700&display=swap" rel="stylesheet">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -939,6 +973,11 @@ class Pquick_AR_Core {
                 return '';
             }
 
+            function generateQRCodeLink(mediaId) {
+                const url = window.location.origin + window.location.pathname + "?pquick_app=scanner&media_id=" + mediaId;
+                return 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=ffb800&data=' + encodeURIComponent(url);
+            }
+
             function render() {
                 const container = document.getElementById('content-container');
                 if(uploadsData.length === 0) { container.innerHTML = '<p class="text-center text-gray-500 mt-10">אין תמונות עדיין. ממתין לאורחים...</p>'; return; }
@@ -1003,7 +1042,7 @@ class Pquick_AR_Core {
                                 <td class="p-4">${getStatusBadge(item.status)}</td>
                                 <td class="p-4 text-left">
                                     <button onclick="downloadSingle('${item.id}', '${item.image}', this)" class="bg-white border text-gray-600 font-bold py-2 px-3 rounded-md shadow-sm mr-2" title="הורד תמונה"><i class="fa-solid fa-download"></i></button>
-                                    <button onclick="printItem('${item.id}', '${item.image}')" class="${isPending ? 'bg-pquick-orange text-pquick-dark' : 'bg-white border text-gray-600'} font-bold py-2 px-4 rounded-md shadow-sm">הדפס</button>
+                                    <button onclick="printItem('${item.id}', '${item.image}')" class="${isPending ? 'bg-pquick-orange text-pquick-dark' : 'bg-white border text-gray-600'} font-bold py-2 px-4 rounded-md shadow-sm">הדפס עם QR</button>
                                 </td>
                             </tr>`;
                     });
@@ -1024,7 +1063,7 @@ class Pquick_AR_Core {
                 });
             }
 
-            async function generateMergedDataURL(photoUrl) {
+            async function generateMergedDataURL(photoUrl, qrUrl = null) {
                 const overlay = await getOverlayImage();
                 return new Promise((resolve, reject) => {
                     const canvas = document.createElement('canvas');
@@ -1042,7 +1081,6 @@ class Pquick_AR_Core {
                         const targetY = (LAYOUT.t / 100) * canvas.height;
                         const targetW = (LAYOUT.w / 100) * canvas.width;
                         const targetH = (LAYOUT.h / 100) * canvas.height;
-
                         const bleed = 3; 
                         const finalX = targetX - bleed;
                         const finalY = targetY - bleed;
@@ -1063,7 +1101,21 @@ class Pquick_AR_Core {
 
                         ctx.drawImage(photo, sX, sY, sW, sH, finalX, finalY, finalW, finalH);
                         ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
-                        resolve(canvas.toDataURL('image/jpeg', 0.95));
+                        
+                        // הוספת ה-QR לתמונה אם התבקש
+                        if (qrUrl) {
+                            const qrImg = new Image();
+                            qrImg.crossOrigin = "Anonymous";
+                            qrImg.onload = () => {
+                                // ממקם את ה-QR בפינה ימנית תחתונה (ניתן לשנות בעתיד)
+                                const qrSize = canvas.width * 0.15;
+                                ctx.drawImage(qrImg, canvas.width - qrSize - 20, canvas.height - qrSize - 20, qrSize, qrSize);
+                                resolve(canvas.toDataURL('image/jpeg', 0.95));
+                            };
+                            qrImg.src = qrUrl;
+                        } else {
+                            resolve(canvas.toDataURL('image/jpeg', 0.95));
+                        }
                     };
                     photo.onerror = reject;
                     photo.src = photoUrl;
@@ -1102,7 +1154,8 @@ class Pquick_AR_Core {
                     progressText.innerText = `מעבד תמונה ${count} מתוך ${itemsToDownload.length}...`;
                     progressBar.style.width = `${(count/itemsToDownload.length)*100}%`;
                     try {
-                        const dataUrl = await generateMergedDataURL(item.image);
+                        const qrUrl = generateQRCodeLink(item.id);
+                        const dataUrl = await generateMergedDataURL(item.image, qrUrl);
                         const base64Data = dataUrl.split(',')[1];
                         folder.file(`Pquick_Photo_${item.id}.jpg`, base64Data, {base64: true});
                     } catch(e) { console.error("Failed to merge image", item.id); }
@@ -1120,6 +1173,9 @@ class Pquick_AR_Core {
             window.downloadAll = function() { downloadMultiple(uploadsData); };
 
             window.printItem = async function(id, imageUrl) {
+                const qrUrl = generateQRCodeLink(id);
+                const mergedDataUrl = await generateMergedDataURL(imageUrl, qrUrl);
+                
                 const printWindow = window.open('', '_blank');
                 const printHTML = `
                 <!DOCTYPE html>
@@ -1131,33 +1187,16 @@ class Pquick_AR_Core {
                         @page { margin: 0; }
                         html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: white; }
                         body { display: flex; justify-content: center; align-items: center; }
-                        .print-wrapper { position: relative; width: 100%; height: 100%; overflow: hidden; display: flex; justify-content: center; align-items: center;}
-                        .print-container { position: relative; max-width: 100%; max-height: 100%; overflow: hidden; display: block; line-height: 0; }
-                        .overlay { width: 100%; height: auto; max-height: 100vh; position: relative; z-index: 2; display: block; object-fit: contain; }
-                        .photo { position: absolute; width: ${LAYOUT.w}%; height: ${LAYOUT.h}%; top: ${LAYOUT.t}%; left: ${LAYOUT.l}%; object-fit: cover; z-index: 1; }
-                        @media print { html, body { overflow: hidden !important; } .print-wrapper { page-break-inside: avoid; page-break-after: avoid; } }
+                        img { max-width: 100%; max-height: 100vh; object-fit: contain; }
                     </style>
                 </head>
                 <body>
-                    <div class="print-wrapper">
-                        <div class="print-container">
-                            <img class="overlay" src="${finalOverlay}" onload="window.overlayLoaded=true;">
-                            <img class="photo" src="${imageUrl}" onload="window.imgLoaded=true;">
-                        </div>
-                    </div>
-                    <script>
-                        window.imgLoaded = false; window.overlayLoaded = false;
-                        let checkReady = setInterval(() => {
-                            if(window.imgLoaded && window.overlayLoaded) {
-                                clearInterval(checkReady);
-                                setTimeout(() => { window.print(); }, 500); 
-                            }
-                        }, 100);
-                    <\/script>
+                    <img src="${mergedDataUrl}" onload="window.print();">
                 </body>
                 </html>`;
                 printWindow.document.write(printHTML);
                 printWindow.document.close();
+                
                 const itemIndex = uploadsData.findIndex(item => item.id == id);
                 if (itemIndex > -1) {
                     uploadsData[itemIndex].status = 'printed';
@@ -1174,8 +1213,22 @@ class Pquick_AR_Core {
         <?php
     }
 
-    // --- אפליקציה 3: סורק ה-AR ---
+    // --- אפליקציה 3: סורק ה-AR (עכשיו דינמי לחלוטין!) ---
     private function output_scanner_app( $event_id ) {
+        if (!isset($_GET['media_id'])) {
+            wp_die('קוד ה-QR לא תקין. חסר מזהה תמונה.', 'שגיאה', array('response' => 400));
+        }
+        
+        $media_id = intval($_GET['media_id']);
+        
+        // שליפת הוידאו וקובץ ה-mind הספציפיים לתמונה הזו
+        $video_url = get_post_meta($media_id, '_pquick_video_url', true);
+        $mind_url = get_post_meta($media_id, '_pquick_mind_url', true);
+        
+        if (empty($video_url) || empty($mind_url)) {
+            wp_die('לא נמצא וידאו או קובץ AR עבור תמונה זו.', 'שגיאה', array('response' => 404));
+        }
+
         $custom_logo = get_post_meta($event_id, '_pquick_event_logo', true);
         $logo_url = $custom_logo ? $custom_logo : '';
         $has_logo = ! empty( trim( $logo_url ) );
@@ -1229,9 +1282,9 @@ class Pquick_AR_Core {
             </div>
 
             <div id="ar-container" style="display:block;">
-                <a-scene mindar-image="imageTargetSrc: https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.2/examples/image-tracking/assets/card-example/card.mind; autoStart: true; uiScanning: no;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+                <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
                     <a-assets timeout="10000">
-                        <video id="ar-video" src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" loop crossorigin="anonymous" playsinline webkit-playsinline autoplay muted></video>
+                        <video id="ar-video" src="<?php echo esc_url($video_url); ?>" loop crossorigin="anonymous" playsinline webkit-playsinline muted></video>
                     </a-assets>
                     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
                     <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
@@ -1248,7 +1301,13 @@ class Pquick_AR_Core {
                     const scanLine = document.getElementById('scan-line');
                     const btnUnmute = document.getElementById('btn-unmute');
 
-                    if(videoEl) videoEl.play().catch(e => console.log("Waiting for scan..."));
+                    // פתרון למניעת מסך לבן בוידאו
+                    videoEl.addEventListener('loadedmetadata', () => {
+                        const ratio = videoEl.videoWidth / videoEl.videoHeight;
+                        const aVideo = document.querySelector('a-video');
+                        aVideo.setAttribute('width', '1');
+                        aVideo.setAttribute('height', (1 / ratio).toString());
+                    });
 
                     if(targetEntity) {
                         targetEntity.addEventListener("targetFound", event => {
