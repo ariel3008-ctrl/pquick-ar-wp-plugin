@@ -516,22 +516,29 @@ class Pquick_AR_Core {
                 @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
                 .file-upload-wrapper { position: relative; overflow: hidden; display: inline-block; width: 100%; }
                 .file-upload-wrapper input[type="file"] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; }
+                
                 .preview-frame { position: relative; width: 100%; background-color: #eee; overflow: hidden; box-shadow: 0 4px 15px rgba(69, 72, 87, 0.15); }
                 .preview-overlay-dynamic { width: 100%; height: auto; position: relative; z-index: 2; pointer-events: none; display: block; object-fit: contain; }
                 .preview-image { position: absolute; z-index: 1; object-fit: cover; width: <?php echo esc_attr($photo_w); ?>%; height: <?php echo esc_attr($photo_h); ?>%; top: <?php echo esc_attr($photo_t); ?>%; left: <?php echo esc_attr($photo_l); ?>%; }
+                
                 .crop-container { width: 100%; height: 50vh; background-color: #000; border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+                
+                /* עיצוב סליידר חילוץ הפריים */
+                input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+                input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 24px; border-radius: 50%; background: #ffb800; cursor: pointer; margin-top: -10px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: 2px solid white; }
+                input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: #e5e7eb; border-radius: 4px; }
+                
                 @keyframes gradientShift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
                 .btn-magic-contact { background: linear-gradient(270deg, #ffb800, #ff7a7b, #9ad7cf, #ffb800); background-size: 300% 300%; animation: gradientShift 4s ease infinite; color: white; text-shadow: 0px 1px 2px rgba(0,0,0,0.2); }
                 .progress-container { width: 100%; background-color: #e5e7eb; border-radius: 9999px; height: 12px; overflow: hidden; margin-top: 15px; }
                 .progress-bar { height: 100%; background-color: #ffb800; width: 0%; transition: width 0.3s ease; border-radius: 9999px; }
-                .force-show-logo { opacity: 1 !important; visibility: visible !important; display: block !important; }
             </style>
         </head>
         <body class="text-pquick-dark">
         <div class="app-container relative">
             <header class="p-4 flex justify-center items-center border-b border-gray-100 sticky top-0 bg-white z-10 shadow-sm min-h-[70px]">
                 <?php if($has_logo): ?>
-                    <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" class="h-10 w-auto object-contain shrink-0 drop-shadow-sm force-show-logo" data-no-lazy="1" data-skip-lazy="1" loading="eager" fetchpriority="high" style="min-width: 60px; max-width: 150px;">
+                    <img src="<?php echo esc_url($logo_url); ?>" alt="Event Logo" class="h-10 w-auto object-contain shrink-0 drop-shadow-sm" style="min-width: 60px; max-width: 150px;">
                 <?php else: ?>
                     <div class="flex flex-col items-center justify-center leading-none">
                         <span class="text-3xl font-bold text-pquick-dark" style="font-family: 'Alef', sans-serif;">Pquick</span>
@@ -543,41 +550,47 @@ class Pquick_AR_Core {
                 <div id="step-upload" class="step active">
                     <div class="text-center mb-8">
                         <h1 class="text-2xl font-bold mb-2">ברוכים הבאים ל<span id="welcome-event-name" class="text-pquick-orange">אירוע</span>!</h1>
-                        <p class="text-gray-500 text-sm">בחרו תמונה להדפסה וסרטון שיקים אותה לחיים בעזרת קסם ה-AR שלנו.</p>
+                        <p class="text-gray-500 text-sm">העלו סרטון שיתעורר לחיים ב-AR, ואנחנו כבר נגזור ממנו את התמונה המושלמת להדפסה.</p>
                     </div>
-                    <div class="space-y-6">
-                        <div class="file-upload-wrapper">
-                            <div class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center transition-colors hover:border-pquick-pink bg-pquick-light" id="image-dropzone">
-                                <div class="text-pquick-pink text-4xl mb-3"><i class="fa-regular fa-image"></i></div>
-                                <h3 class="font-bold">1. תמונה להדפסה</h3>
-                                <p class="text-xs text-gray-500 mt-1">לחצו לבחירה או צלמו עכשיו</p>
-                                <p id="image-filename" class="text-sm font-bold text-pquick-lightgreen mt-2 hidden"><i class="fa-solid fa-check"></i> התמונה נחתכה ונשמרה</p>
+                    <div class="space-y-6 mt-4">
+                        <div class="file-upload-wrapper w-full">
+                            <div class="border-2 border-dashed border-pquick-orange rounded-xl p-10 text-center transition-colors hover:border-pquick-pink bg-pquick-light shadow-sm" id="video-dropzone">
+                                <div class="text-pquick-orange text-6xl mb-4 animate-bounce"><i class="fa-solid fa-video"></i></div>
+                                <h3 class="font-bold text-2xl mb-2">בחרו או צלמו סרטון</h3>
+                                <p class="text-sm text-gray-500">לחצו כאן (עד 15 שניות)</p>
                             </div>
-                            <input type="file" id="input-image" accept="image/*">
-                        </div>
-                        <div class="file-upload-wrapper">
-                            <div class="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center transition-colors hover:border-pquick-pink bg-pquick-light opacity-50 transition-opacity" id="video-dropzone">
-                                <div class="text-pquick-pink text-4xl mb-3"><i class="fa-solid fa-video"></i></div>
-                                <h3 class="font-bold">2. סרטון ההפתעה (AR)</h3>
-                                <p class="text-xs text-gray-500 mt-1">עד 15 שניות של קסם</p>
-                                <p id="video-filename" class="text-sm font-bold text-pquick-lightgreen mt-2 hidden"><i class="fa-solid fa-check"></i> נבחר סרטון</p>
-                            </div>
-                            <input type="file" id="input-video" accept="video/*" disabled>
+                            <input type="file" id="input-video" accept="video/*">
                         </div>
                     </div>
-                    <div class="mt-auto pt-8">
-                        <button id="btn-to-preview" disabled class="w-full bg-gray-200 text-gray-400 font-bold py-4 rounded-full text-lg transition-colors shadow-md disabled:cursor-not-allowed">
-                            המשך לתצוגה מקדימה <i class="fa-solid fa-arrow-left ml-2"></i>
-                        </button>
+                </div>
+
+                <div id="step-frame-select" class="step">
+                    <div class="text-center mb-4">
+                        <h2 class="text-xl font-bold">בחירת תמונה להדפסה</h2>
+                        <p class="text-gray-500 text-sm">הזיזו את הסליידר כדי לבחור את הרגע המושלם מהסרטון</p>
+                    </div>
+                    <div class="relative bg-black rounded-xl overflow-hidden mb-6 flex items-center justify-center" style="height: 45vh;">
+                        <video id="video-extractor" class="max-w-full max-h-full object-contain" playsinline webkit-playsinline muted preload="auto"></video>
+                    </div>
+                    <div class="px-2 mb-8 mt-auto">
+                        <input type="range" id="video-slider" min="0" max="100" step="0.01" value="0">
+                        <div class="flex justify-between text-xs text-gray-500 mt-2 font-bold">
+                            <span>התחלה <i class="fa-solid fa-play"></i></span>
+                            <span>סוף <i class="fa-solid fa-flag-checkered"></i></span>
+                        </div>
+                    </div>
+                    <div class="flex gap-3 pb-6">
+                        <button id="btn-cancel-video" class="flex-1 bg-white border-2 border-gray-200 text-pquick-dark font-bold py-3 rounded-full hover:bg-gray-50">ביטול</button>
+                        <button id="btn-capture-frame" class="flex-[2] bg-pquick-orange text-pquick-dark font-bold py-3 rounded-full shadow-lg hover:opacity-90">הדפס רגע זה <i class="fa-solid fa-camera ml-2"></i></button>
                     </div>
                 </div>
 
                 <div id="step-crop" class="step">
-                    <div class="text-center mb-4"><h2 class="text-xl font-bold">התאמת תמונה</h2><p class="text-gray-500 text-sm">הזיזו או עשו זום להתאמה מושלמת למסגרת ההדפסה</p></div>
+                    <div class="text-center mb-4"><h2 class="text-xl font-bold">התאמה למסגרת</h2><p class="text-gray-500 text-sm">הזיזו או עשו זום להתאמה מושלמת למסגרת ההדפסה</p></div>
                     <div class="crop-container"><img id="image-to-crop" src="" style="max-width: 100%; display: block;"></div>
                     <div class="flex gap-3 mt-auto pb-10">
-                        <button id="btn-cancel-crop" class="flex-1 bg-white border-2 border-gray-200 text-pquick-dark font-bold py-3 rounded-full transition-colors hover:bg-gray-50">ביטול</button>
-                        <button id="btn-save-crop" class="flex-[2] bg-pquick-orange text-pquick-dark font-bold py-3 rounded-full shadow-lg hover:opacity-90 transition-opacity">חתוך ושמור <i class="fa-solid fa-crop-simple ml-2"></i></button>
+                        <button id="btn-back-to-frame" class="flex-1 bg-white border-2 border-gray-200 text-pquick-dark font-bold py-3 rounded-full transition-colors hover:bg-gray-50">אחורה</button>
+                        <button id="btn-save-crop" class="flex-[2] bg-pquick-orange text-pquick-dark font-bold py-3 rounded-full shadow-lg hover:opacity-90 transition-opacity">חתוך והמשך <i class="fa-solid fa-crop-simple ml-2"></i></button>
                     </div>
                 </div>
 
@@ -606,7 +619,7 @@ class Pquick_AR_Core {
                     <div class="text-center w-full max-w-xs mx-auto">
                         <i class="fa-solid fa-cloud-arrow-up text-5xl text-pquick-orange mb-4 animate-bounce" id="loading-icon"></i>
                         <h2 class="text-xl font-bold" id="loading-title">מעלה קבצים...</h2>
-                        <p class="text-gray-500 text-sm mt-2" id="loading-subtitle">מגבה הכל באמזון בבטחה, אנא המתן</p>
+                        <p class="text-gray-500 text-sm mt-2" id="loading-subtitle">מכין את קסם ה-AR, אנא המתן</p>
                         <div class="progress-container"><div id="upload-progress-bar" class="progress-bar"></div></div>
                         <p id="upload-progress-text" class="text-pquick-dark font-bold mt-2">0%</p>
                     </div>
@@ -614,7 +627,7 @@ class Pquick_AR_Core {
 
                 <div id="step-success" class="step text-center">
                     <div class="w-20 h-20 bg-pquick-lightgreen rounded-full flex items-center justify-center mx-auto mb-4 text-pquick-dark text-4xl shadow-md mt-4"><i class="fa-solid fa-check"></i></div>
-                    <h1 class="text-2xl font-bold mb-2">התמונה נשלחה להדפסה!</h1>
+                    <h1 class="text-2xl font-bold mb-2">הזכרון נשלח להדפסה!</h1>
                     
                     <div class="bg-pquick-light rounded-xl p-5 text-right my-2 border border-gray-200 shadow-sm">
                         <h3 class="font-bold text-lg mb-4 text-center border-b border-gray-200 pb-2">מה עושים עכשיו?</h3>
@@ -635,7 +648,7 @@ class Pquick_AR_Core {
                     </div>
 
                     <button onclick="location.reload()" class="w-full bg-white border-2 border-pquick-dark text-pquick-dark font-bold py-3 rounded-full hover:bg-gray-50 mb-4 mt-4 transition-colors">
-                        העלה תמונה נוספת
+                        העלה סרטון נוסף
                     </button>
 
                     <button id="btn-guest-share" class="w-full bg-[#ffb800] text-[#454857] font-bold py-3 px-8 rounded-full shadow-md hover:scale-105 transition-transform flex items-center justify-center gap-2 mb-6">
@@ -668,8 +681,10 @@ class Pquick_AR_Core {
                 document.getElementById('preview-overlay-element').src = EVENT_DATA.overlayUrl;
                 document.getElementById('max-qty-num').textContent = EVENT_DATA.maxCopies;
                 
-                const inputImage = document.getElementById('input-image');
                 const inputVideo = document.getElementById('input-video');
+                const videoExtractor = document.getElementById('video-extractor');
+                const videoSlider = document.getElementById('video-slider');
+                
                 const imageToCropElement = document.getElementById('image-to-crop');
                 const previewImgElement = document.getElementById('preview-img-element');
                 const btnGuestShare = document.getElementById('btn-guest-share');
@@ -677,6 +692,7 @@ class Pquick_AR_Core {
                 let cropper = null;
                 let croppedImageDataUrl = null;
                 let currentQty = 1;
+                let selectedVideoFile = null;
 
                 const updateQtyUI = () => {
                     document.getElementById('print-qty-display').textContent = currentQty;
@@ -694,67 +710,87 @@ class Pquick_AR_Core {
                 document.getElementById('btn-qty-plus').addEventListener('click', () => { if (currentQty < EVENT_DATA.maxCopies) { currentQty++; updateQtyUI(); } });
                 updateQtyUI();
 
-                let hasImage = false, hasVideo = false;
-
                 const showStep = (stepId) => {
                     document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
                     document.getElementById(stepId).classList.add('active');
                 };
 
-                const checkFormValidity = () => {
-                    const btn = document.getElementById('btn-to-preview');
-                    if (hasImage && hasVideo) {
-                        btn.disabled = false; btn.className = 'w-full bg-pquick-orange text-pquick-dark font-bold py-4 rounded-full text-lg shadow-md transition-colors';
-                    } else {
-                        btn.disabled = true; btn.className = 'w-full bg-gray-200 text-gray-400 font-bold py-4 rounded-full text-lg transition-colors cursor-not-allowed';
-                    }
-                };
-
-                inputImage.addEventListener('change', function(e) {
+                // בחירת וידאו וטעינת הנתונים (תוקן למובייל)
+                inputVideo.addEventListener('change', function(e) {
                     if (this.files && this.files[0]) {
-                        const reader = new FileReader();
-                        reader.onload = function(event) {
-                            imageToCropElement.src = event.target.result;
-                            showStep('step-crop');
-                            if (cropper) cropper.destroy();
-                            cropper = new Cropper(imageToCropElement, { aspectRatio: EVENT_DATA.printFormat, viewMode: 1, dragMode: 'move', autoCropArea: 1, guides: true, center: true, highlight: false, cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false });
-                        }
-                        reader.readAsDataURL(this.files[0]);
+                        selectedVideoFile = this.files[0];
+                        const videoURL = URL.createObjectURL(selectedVideoFile);
+                        videoExtractor.src = videoURL;
+                        videoExtractor.load(); // מכריח דפדפני מובייל להתחיל טעינה
+                        
+                        videoExtractor.onloadeddata = () => {
+                            videoSlider.max = videoExtractor.duration;
+                            videoSlider.value = 0;
+                            
+                            // טריק קריטי לאייפון: הזזה קלה מכריחה רינדור של הפריים
+                            setTimeout(() => {
+                                videoExtractor.currentTime = 0.001; 
+                            }, 100);
+
+                            showStep('step-frame-select');
+                        };
                     }
                 });
 
-                document.getElementById('btn-cancel-crop').addEventListener('click', () => {
-                    if (cropper) cropper.destroy(); inputImage.value = ''; showStep('step-upload');
+                // גלילת הוידאו באמצעות הסליידר
+                videoSlider.addEventListener('input', function() {
+                    videoExtractor.currentTime = this.value;
                 });
 
+                document.getElementById('btn-cancel-video').addEventListener('click', () => {
+                    inputVideo.value = ''; 
+                    selectedVideoFile = null;
+                    showStep('step-upload');
+                });
+
+                // צילום המסך מתוך הוידאו והעברה לקרופר
+                document.getElementById('btn-capture-frame').addEventListener('click', () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = videoExtractor.videoWidth;
+                    canvas.height = videoExtractor.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    
+                    ctx.drawImage(videoExtractor, 0, 0, canvas.width, canvas.height);
+                    const frameDataURL = canvas.toDataURL('image/jpeg', 1.0);
+                    
+                    imageToCropElement.src = frameDataURL;
+                    showStep('step-crop');
+                    
+                    if (cropper) cropper.destroy();
+                    cropper = new Cropper(imageToCropElement, { 
+                        aspectRatio: EVENT_DATA.printFormat, 
+                        viewMode: 1, dragMode: 'move', autoCropArea: 1, guides: true, center: true, highlight: false, cropBoxMovable: false, cropBoxResizable: false, toggleDragModeOnDblclick: false 
+                    });
+                });
+
+                document.getElementById('btn-back-to-frame').addEventListener('click', () => {
+                    if (cropper) cropper.destroy();
+                    showStep('step-frame-select');
+                });
+
+                // אישור החיתוך
                 document.getElementById('btn-save-crop').addEventListener('click', () => {
                     if (!cropper) return;
+                    
                     const exportWidth = 1000;
                     const exportHeight = exportWidth / EVENT_DATA.printFormat;
+                    
                     const canvas = cropper.getCroppedCanvas({ width: exportWidth, height: exportHeight });
                     croppedImageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     previewImgElement.src = croppedImageDataUrl;
-                    hasImage = true;
-                    document.getElementById('image-filename').classList.remove('hidden');
-                    document.getElementById('image-dropzone').classList.replace('border-gray-300', 'border-pquick-lightgreen');
-                    inputVideo.disabled = false;
-                    document.getElementById('video-dropzone').classList.remove('opacity-50');
+                    
                     if (cropper) cropper.destroy();
-                    checkFormValidity(); showStep('step-upload');
+                    showStep('step-preview');
                 });
 
-                inputVideo.addEventListener('change', function(e) {
-                    if (this.files && this.files[0]) {
-                        hasVideo = true;
-                        document.getElementById('video-filename').classList.remove('hidden');
-                        document.getElementById('video-dropzone').classList.replace('border-gray-300', 'border-pquick-lightgreen');
-                    }
-                    checkFormValidity();
-                });
+                document.getElementById('btn-back').addEventListener('click', () => showStep('step-crop'));
 
-                document.getElementById('btn-to-preview').addEventListener('click', () => { if (hasImage && hasVideo) showStep('step-preview'); });
-                document.getElementById('btn-back').addEventListener('click', () => showStep('step-upload'));
-
+                // שליחה לשרת
                 document.getElementById('btn-submit').addEventListener('click', async () => {
                     showStep('step-loading');
                     
@@ -762,7 +798,7 @@ class Pquick_AR_Core {
                     formData.append('event_id', EVENT_DATA.id);
                     formData.append('copies', currentQty);
                     formData.append('image_base64', croppedImageDataUrl);
-                    if (inputVideo.files && inputVideo.files[0]) formData.append('video_file', inputVideo.files[0]);
+                    if (selectedVideoFile) formData.append('video_file', selectedVideoFile);
 
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', '/wp-json/pquick/v1/upload', true);
@@ -792,7 +828,7 @@ class Pquick_AR_Core {
                 btnGuestShare.addEventListener('click', async () => {
                     const shareData = {
                         title: 'Pquick AR Events',
-                        text: 'העליתי תמונה לאירוע! בואו לראות ולהעלות גם:',
+                        text: 'העליתי סרטון לאירוע! בואו לראות ולהעלות גם:',
                         url: window.location.href
                     };
                     if (navigator.share && navigator.canShare(shareData)) {
@@ -1227,12 +1263,18 @@ class Pquick_AR_Core {
         $custom_logo = get_post_meta($event_id, '_pquick_event_logo', true);
         $logo_url = $custom_logo ? $custom_logo : '';
         $has_logo = ! empty( trim( $logo_url ) );
+        
+        $print_format = get_post_meta($event_id, '_pquick_print_format', true) ?: '0.75';
+        $print_fmt_val = floatval($print_format);
+
+        $plane_width = 1;
+        $plane_height = $print_fmt_val > 0 ? (1 / $print_fmt_val) : 1.333;
         ?>
         <!DOCTYPE html>
         <html lang="he" dir="rtl">
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
             <title>Pquick AR - סורק מציאות רבודה</title>
             <script src="https://cdn.tailwindcss.com"></script>
             <link href="https://fonts.googleapis.com/css2?family=Alef:wght@400;700&display=swap" rel="stylesheet">
@@ -1240,75 +1282,68 @@ class Pquick_AR_Core {
             <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
             <style>
-                body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Alef', sans-serif; position: fixed; inset: 0; }
+                body, html { margin: 0; padding: 0; width: 100vw; height: 100dvh; overflow: hidden; background-color: #000; font-family: 'Alef', sans-serif; position: fixed; inset: 0; }
                 .a-enter-vr, .a-enter-ar { display: none !important; }
-                #ar-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; display: block; }
-                #scanner-ui { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
                 
-                /* מרכוז אבסולוטי - חסין לתזוזות ספארי */
-                #scan-guide {
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    width: 75%;
-                    max-width: 300px;
-                    aspect-ratio: 3/4;
-                    border: 2px solid rgba(255,255,255,0.5);
-                    border-radius: 0.75rem;
-                    box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
-                    z-index: 20;
-                    pointer-events: none;
-                }
-
-                .scan-line { width: 80%; height: 2px; background: #ffb800; position: absolute; top: 30%; left: 10%; box-shadow: 0 0 10px #ffb800; animation: scan 2s infinite alternate; border-radius: 50%; }
-                @keyframes scan { 0% { top: 30%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 70%; opacity: 0; } }
-                .force-show-logo { opacity: 1 !important; visibility: visible !important; display: block !important; }
+                #ar-container { width: 100vw; height: 100dvh; position: absolute; top: 0; left: 0; z-index: 1; display: block; }
+                video { object-fit: cover !important; width: 100vw !important; height: 100dvh !important; position: absolute !important; top: 0 !important; left: 0 !important; }
+                
+                /* שכבת הממשק הכללית */
+                #scanner-ui { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; pointer-events: none; }
+                .pointer-auto { pointer-events: auto; cursor: pointer; }
+                
+                /* הלוגו - מיקום ימני קשיח, עיצוב פשוט וישיר כמו באפליקציית האורח */
+                #logo-wrapper { position: absolute; top: max(20px, env(safe-area-inset-top)); right: 20px; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 8px 18px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; min-height: 45px; }
+                #logo-wrapper img { height: 30px; width: auto; display: block; }
+                
+                /* לחצן שיתוף - צד שמאל */
+                #btn-share { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 20px; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 50px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; color: white; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: transform 0.1s; }
+                #btn-share:active { transform: scale(0.95); }
+                
+                /* אזור תחתון: סטטוס */
+                #status-wrapper { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); width: 100%; max-width: 350px; text-align: center; transition: opacity 0.5s ease; }
+                #status-container { background-color: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 50px; padding: 12px 22px; display: inline-block; box-shadow: 0 10px 30px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); }
+                #status-text { margin: 0; color: #ffffff; font-size: 15px; font-weight: bold; }
+                
+                /* אזור תחתון: לחצן סאונד - העיצוב המקורי הבולט עם ההילה */
+                #btn-unmute { position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 2px solid #ffb800; color: white; font-weight: bold; padding: 12px 25px; border-radius: 50px; font-size: 16px; display: none; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 0 20px rgba(255,184,0,0.5); white-space: nowrap; transition: transform 0.1s; }
+                #btn-unmute:active { transform: translateX(-50%) scale(0.95); }
             </style>
         </head>
         <body>
             <div id="scanner-ui">
-                <div class="absolute top-0 w-full p-6 flex justify-between items-start pointer-events-auto z-50">
-                    <div class="bg-black/50 backdrop-blur-md rounded-full px-5 py-2 flex items-center justify-center shadow-lg">
-                        <?php if($has_logo): ?>
-                            <img src="<?php echo esc_url($logo_url); ?>" alt="Pquick Logo" class="h-8 w-auto object-contain shrink-0 drop-shadow-sm force-show-logo" data-no-lazy="1" data-skip-lazy="1" loading="eager" fetchpriority="high" style="min-width: 40px; max-width: 120px;">
-                        <?php else: ?>
-                            <span class="text-lg font-bold text-white">Pquick<span class="text-[#ffb800]">AR</span></span>
-                        <?php endif; ?>
-                    </div>
-
-                    <button id="btn-share" class="bg-black/50 backdrop-blur-md rounded-full w-12 h-12 flex items-center justify-center shadow-lg text-white hover:text-[#ffb800] transition-colors active:scale-95">
-                        <i class="fa-solid fa-arrow-up-from-bracket text-lg"></i>
-                    </button>
-                </div>
-                
-                <div id="scan-guide">
-                    <div class="absolute -top-2 -left-2 w-6 h-6 border-t-4 border-l-4 border-[#ffb800] rounded-tl-lg"></div>
-                    <div class="absolute -top-2 -right-2 w-6 h-6 border-t-4 border-r-4 border-[#ffb800] rounded-tr-lg"></div>
-                    <div class="absolute -bottom-2 -left-2 w-6 h-6 border-b-4 border-l-4 border-[#ffb800] rounded-bl-lg"></div>
-                    <div class="absolute -bottom-2 -right-2 w-6 h-6 border-b-4 border-r-4 border-[#ffb800] rounded-br-lg"></div>
-                    <div class="scan-line" id="scan-line"></div>
+                <div id="logo-wrapper" class="pointer-auto">
+                    <?php if($has_logo): ?>
+                        <img src="<?php echo esc_url($logo_url); ?>" alt="Pquick Logo" data-no-lazy="1" data-skip-lazy="1" loading="eager" fetchpriority="high" onerror="this.style.display='none'; document.getElementById('logo-fallback-text').style.display='block';">
+                        <span id="logo-fallback-text" style="display:none; font-size: 18px; font-weight: bold; color: white; font-family:'Alef',sans-serif; margin:0;">Pquick<span style="color:#ffb800;">AR</span></span>
+                    <?php else: ?>
+                        <span style="font-size: 18px; font-weight: bold; color: white; font-family:'Alef',sans-serif; margin:0;">Pquick<span style="color:#ffb800;">AR</span></span>
+                    <?php endif; ?>
                 </div>
 
-                <div class="absolute bottom-10 w-full px-6 flex justify-center z-50 pointer-events-none">
-                    <div class="bg-black/60 backdrop-blur-md rounded-2xl p-4 text-center w-full max-w-sm shadow-xl">
-                        <p class="text-white font-bold" id="status-text"><i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...</p>
+                <button id="btn-share" class="pointer-auto">
+                    <i class="fa-solid fa-arrow-up-from-bracket text-xl"></i>
+                </button>
+
+                <div id="status-wrapper">
+                    <div id="status-container">
+                        <p id="status-text"><i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...</p>
                     </div>
                 </div>
                 
-                <button id="btn-unmute" class="hidden absolute top-[65%] left-1/2 transform -translate-x-1/2 bg-[#ffb800] text-[#454857] font-bold py-3 px-8 rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.5)] z-[9999] pointer-events-auto active:scale-95 flex items-center justify-center gap-2 whitespace-nowrap">
-                    <i class="fa-solid fa-volume-high"></i> הפעל סאונד
+                <button id="btn-unmute" class="pointer-auto">
+                    <i class="fa-solid fa-volume-high text-lg"></i> <span>הפעל סאונד</span>
                 </button>
             </div>
 
             <div id="ar-container">
-                <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+                <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
                     <a-assets timeout="10000">
                         <video id="ar-video" src="<?php echo esc_url($video_url); ?>" loop crossorigin="anonymous" playsinline webkit-playsinline muted></video>
                     </a-assets>
                     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
                     <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
-                        <a-video src="#ar-video" position="0 0 0" width="1" height="1" rotation="0 0 0"></a-video>
+                        <a-entity id="ar-plane" geometry="primitive: plane; width: <?php echo esc_attr($plane_width); ?>; height: <?php echo esc_attr($plane_height); ?>" material="shader: flat; src: #ar-video;" scale="1.04 1.04 1.04" position="0 0 0.01" rotation="0 0 0"></a-entity>
                     </a-entity>
                 </a-scene>
             </div>
@@ -1317,50 +1352,70 @@ class Pquick_AR_Core {
                 document.addEventListener("DOMContentLoaded", () => {
                     const targetEntity = document.querySelector('#target-entity');
                     const videoEl = document.querySelector('#ar-video');
+                    const arPlane = document.querySelector('#ar-plane');
+                    const statusWrapper = document.getElementById('status-wrapper');
                     const statusText = document.getElementById('status-text');
-                    const scanLine = document.getElementById('scan-line');
-                    const btnUnmute = document.getElementById('btn-unmute');
                     const btnShare = document.getElementById('btn-share');
+                    const btnUnmute = document.getElementById('btn-unmute');
+                    
+                    const targetPlaneAspect = <?php echo $plane_width / $plane_height; ?>;
 
-                    fetch('<?php echo esc_url($mind_url); ?>', { method: 'HEAD' })
-                        .then(res => {
-                            if (!res.ok) {
-                                statusText.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-red-500 mr-2"></i> שגיאה: קובץ ה-AR חסר! ודא שהלמבדה באמזון הוגדרה עם 2048MB זיכרון.';
-                            }
-                        }).catch(e => console.log('S3 Check failed due to CORS, continuing normally...'));
+                    fetch('<?php echo esc_url($mind_url); ?>', { method: 'HEAD' }).catch(e => console.log('S3 Check'));
 
-                    // הקסם: שימור יחס הגובה-רוחב המקורי של הוידאו
-                    videoEl.addEventListener('loadedmetadata', () => {
-                        const ratio = videoEl.videoWidth / videoEl.videoHeight;
-                        const aVideo = document.querySelector('a-video');
-                        aVideo.setAttribute('width', '1');
-                        aVideo.setAttribute('height', (1 / ratio).toString());
-                    });
+                    const updateVideoMaterial = () => {
+                        if (!videoEl.videoWidth) return;
+                        const videoAspect = videoEl.videoWidth / videoEl.videoHeight;
+                        let repeatX = 1, repeatY = 1;
+                        let offsetX = 0, offsetY = 0;
+
+                        if (videoAspect > targetPlaneAspect) {
+                            repeatX = targetPlaneAspect / videoAspect;
+                            offsetX = (1 - repeatX) / 2;
+                        } else {
+                            repeatY = videoAspect / targetPlaneAspect;
+                            offsetY = (1 - repeatY) / 2;
+                        }
+                        arPlane.setAttribute('material', `shader: flat; src: #ar-video; repeat: ${repeatX} ${repeatY}; offset: ${offsetX} ${offsetY};`);
+                    };
+
+                    if (videoEl.readyState >= 1) updateVideoMaterial();
+                    else videoEl.addEventListener('loadedmetadata', updateVideoMaterial);
 
                     if(targetEntity) {
                         targetEntity.addEventListener("targetFound", event => {
-                            statusText.innerHTML = '<i class="fa-solid fa-circle-check text-[#9ad7cf] mr-2"></i> התמונה זוהתה!';
-                            scanLine.style.display = 'none';
-                            videoEl.play();
-                            btnUnmute.classList.remove('hidden'); 
+                            statusWrapper.style.opacity = '0';
+                            videoEl.play().catch(e => console.log("Autoplay blocked", e));
+                            btnUnmute.style.display = 'flex';
                         });
 
                         targetEntity.addEventListener("targetLost", event => {
+                            statusWrapper.style.opacity = '1';
                             statusText.innerHTML = '<i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...';
-                            scanLine.style.display = 'block';
                             videoEl.pause();
-                            btnUnmute.classList.add('hidden');
+                            btnUnmute.style.display = 'none';
                         });
                     }
 
-                    // הפעלה/השתקת סאונד
+                    // סאונד - שיניתי רק את התכונות הספציפיות כדי לשמור על העיצוב (המסגרת)
                     btnUnmute.addEventListener('click', () => {
                         videoEl.muted = !videoEl.muted;
-                        if(videoEl.muted) { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-xmark"></i> הפעל סאונד'; } 
-                        else { btnUnmute.innerHTML = '<i class="fa-solid fa-volume-high"></i> השתק סאונד'; }
+                        if(videoEl.muted) {
+                            btnUnmute.innerHTML = '<i class="fa-solid fa-volume-xmark text-lg"></i> <span>הפעל סאונד</span>';
+                            btnUnmute.style.backgroundColor = "rgba(0,0,0,0.8)";
+                            btnUnmute.style.color = "white";
+                            btnUnmute.style.borderColor = "#ffb800";
+                            btnUnmute.style.boxShadow = "0 0 20px rgba(255,184,0,0.5)";
+                        } else {
+                            btnUnmute.innerHTML = '<i class="fa-solid fa-volume-high text-lg animate-pulse"></i> <span>השתק סאונד</span>';
+                            btnUnmute.style.backgroundColor = "white";
+                            btnUnmute.style.color = "red";
+                            btnUnmute.style.borderColor = "white";
+                            btnUnmute.style.boxShadow = "0 0 20px rgba(255,255,255,0.5)";
+                            videoEl.play(); 
+                        }
                     });
 
-                    // מערכת השיתוף לאייפון ומכשירים ניידים
+                    // שיתוף
                     btnShare.addEventListener('click', async () => {
                         const shareData = {
                             title: 'Pquick AR',
@@ -1369,9 +1424,7 @@ class Pquick_AR_Core {
                         };
 
                         if (navigator.share && navigator.canShare(shareData)) {
-                            try {
-                                await navigator.share(shareData);
-                            } catch (err) {}
+                            try { await navigator.share(shareData); } catch (err) {}
                         } else {
                             navigator.clipboard.writeText(window.location.href);
                             alert('הקישור הועתק! תוכל לשלוח אותו לחברים.');
