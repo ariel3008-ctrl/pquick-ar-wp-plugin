@@ -1207,19 +1207,27 @@ class Pquick_AR_Core {
 
                     const printHTML = `
                     <!DOCTYPE html>
-                    <html lang="he" dir="rtl">
+                    <html lang="en">
                     <head>
                         <meta charset="UTF-8">
-                        <title>הדפסת תמונה #${id}</title>
+                        <title>Print #${id}</title>
                         <style>
-                            @page { margin: 0; }
-                            html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: white; }
-                            body { display: flex; justify-content: center; align-items: center; }
-                            img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                            @page { margin: 0; size: auto; }
+                            html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: white; overflow: hidden; }
+                            img { 
+                                position: absolute;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                object-fit: contain;
+                                margin: 0;
+                                padding: 0;
+                            }
                         </style>
                     </head>
                     <body>
-                        <img src="${mergedDataUrl}" onload="window.print();">
+                        <img src="${mergedDataUrl}" onload="setTimeout(function() { window.print(); }, 200);">
                     </body>
                     </html>`;
                     printWindow.document.write(printHTML);
@@ -1337,13 +1345,13 @@ class Pquick_AR_Core {
             </div>
 
             <div id="ar-container">
-                <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no; filterMinCF: 0.0001; filterBeta: 0.001;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+                <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no; filterMinCF: 0.05; filterBeta: 50; missTolerance: 2;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
                     <a-assets timeout="10000">
                         <video id="ar-video" src="<?php echo esc_url($video_url); ?>" loop crossorigin="anonymous" playsinline webkit-playsinline muted></video>
                     </a-assets>
                     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
                     <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
-                        <a-entity id="ar-plane" geometry="primitive: plane; width: <?php echo esc_attr($plane_width); ?>; height: <?php echo esc_attr($plane_height); ?>" material="shader: flat; src: #ar-video;" scale="1.04 1.04 1.04" position="0 0 0.01" rotation="0 0 0"></a-entity>
+                        <a-entity id="ar-plane" geometry="primitive: plane; width: <?php echo esc_attr($plane_width); ?>; height: <?php echo esc_attr($plane_height); ?>" material="shader: flat; src: #ar-video;" scale="1.01 1.01 1.01" position="0 0 0" rotation="0 0 0"></a-entity>
                     </a-entity>
                 </a-scene>
             </div>
