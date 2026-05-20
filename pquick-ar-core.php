@@ -647,7 +647,11 @@ class Pquick_AR_Core {
                         </ul>
                     </div>
 
-                    <button onclick="location.reload()" class="w-full bg-white border-2 border-pquick-dark text-pquick-dark font-bold py-3 rounded-full hover:bg-gray-50 mb-4 mt-4 transition-colors">
+                    <a id="btn-open-scanner" href="#" class="w-full bg-pquick-orange text-pquick-dark font-bold py-4 rounded-full shadow-lg hover:scale-105 transition-transform flex items-center justify-center gap-2 mb-4 mt-4 text-lg hidden">
+                        <i class="fa-solid fa-expand"></i> פתח סורק AR עכשיו!
+                    </a>
+
+                    <button onclick="location.reload()" class="w-full bg-white border-2 border-gray-300 text-gray-600 font-bold py-3 rounded-full hover:bg-gray-50 mb-4 transition-colors">
                         העלה סרטון נוסף
                     </button>
 
@@ -814,6 +818,12 @@ class Pquick_AR_Core {
                             const data = JSON.parse(xhr.responseText);
                             if(data.success) {
                                 showStep('step-success');
+                                
+                                // אסטרטגיית סורק רציף: בניית הלינק והצגת הכפתור
+                                const scannerBtn = document.getElementById('btn-open-scanner');
+                                scannerBtn.href = window.location.origin + window.location.pathname + "?pquick_app=scanner&event_id=" + EVENT_DATA.id + "&media_id=" + data.media_id;
+                                scannerBtn.classList.remove('hidden');
+                                
                                 if(typeof confetti !== 'undefined') confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, colors: ['#ffb800', '#9ad7cf', '#ff7a7b', '#454857'], zIndex: 100 });
                             } else { alert('שגיאה: ' + (data.message || 'לא הצלחנו לשמור.')); showStep('step-preview'); }
                         } else {
@@ -934,7 +944,8 @@ class Pquick_AR_Core {
             const EVENT_ID = <?php echo intval($event_id); ?>;
             const OVERLAY_URL = "<?php echo esc_js($overlay_url); ?>";
             const LAYOUT = { w: <?php echo floatval($photo_w); ?>, h: <?php echo floatval($photo_h); ?>, t: <?php echo floatval($photo_t); ?>, l: <?php echo floatval($photo_l); ?> };
-            
+            const LOGO_URL = "<?php echo esc_js($logo_url); ?>";
+
             let finalOverlay = OVERLAY_URL;
             if (!finalOverlay) {
                 finalOverlay = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800"><path d="M0 0h600v800H0z M30 30v650h540V30z" fill="#ffffff" fill-rule="evenodd"/><text x="300" y="730" font-family="Alef, sans-serif" font-size="40" fill="#ffb800" font-weight="bold" text-anchor="middle"><?php echo esc_js($event_name); ?></text></svg>`);
@@ -991,7 +1002,8 @@ class Pquick_AR_Core {
 
             function generateQRCodeLink(mediaId) {
                 const url = window.location.origin + window.location.pathname + "?pquick_app=scanner&event_id=" + EVENT_ID + "&media_id=" + mediaId;
-                return 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=ffb800&data=' + encodeURIComponent(url);
+                // שימוש ב-API היציב עם רמת תיקון שגיאות גבוהה (ecc=H) שמאפשרת לנו להסתיר חלק מהאמצע
+                return 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&color=ffb800&ecc=H&data=' + encodeURIComponent(url);
             }
 
             function render() {
@@ -1125,8 +1137,43 @@ class Pquick_AR_Core {
                             qrImg.crossOrigin = "Anonymous";
                             qrImg.onload = () => {
                                 const qrSize = canvas.width * 0.15;
-                                ctx.drawImage(qrImg, canvas.width - qrSize - 20, canvas.height - qrSize - 20, qrSize, qrSize);
-                                resolve(canvas.toDataURL('image/jpeg', 0.95));
+                                const qrX = canvas.width - qrSize - 20;
+                                const qrY = canvas.height - qrSize - 20;
+                                
+                                // מציירים קודם את ה-QR הנקי
+                                ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+                                
+                                // אם יש לוגו מוגדר, מציירים אותו במרכז ה-QR
+                                if (LOGO_URL) {
+                                    const logoImg = new Image();
+                                    logoImg.crossOrigin = "Anonymous";
+                                    logoImg.onload = () => {
+                                        // הלוגו יתפוס כ-30% מרוחב ה-QR
+                                        const logoSizeW = qrSize * 0.3;
+                                        // שמירה על הפרופורציה המקורית של הלוגו
+                                        const logoRatio = logoImg.width / logoImg.height;
+                                        const logoSizeH = logoSizeW / logoRatio;
+                                        
+                                        const logoX = qrX + (qrSize - logoSizeW) / 2;
+                                        const logoY = qrY + (qrSize - logoSizeH) / 2;
+                                        
+                                        // ציור רקע לבן קטן מתחת ללוגו כדי שיבלוט ולא יתערבב עם הפיקסלים של ה-QR
+                                        ctx.fillStyle = '#ffffff';
+                                        ctx.fillRect(logoX - 4, logoY - 4, logoSizeW + 8, logoSizeH + 8);
+                                        
+                                        // ציור הלוגו מעל
+                                        ctx.drawImage(logoImg, logoX, logoY, logoSizeW, logoSizeH);
+                                        
+                                        resolve(canvas.toDataURL('image/jpeg', 0.95));
+                                    };
+                                    logoImg.onerror = () => { 
+                                        // אם הלוגו נכשל מסיבה כלשהי, מחזירים את התמונה עם ה-QR הרגיל
+                                        resolve(canvas.toDataURL('image/jpeg', 0.95)); 
+                                    };
+                                    logoImg.src = LOGO_URL;
+                                } else {
+                                    resolve(canvas.toDataURL('image/jpeg', 0.95));
+                                }
                             };
                             qrImg.src = qrUrl;
                         } else {
@@ -1275,6 +1322,7 @@ class Pquick_AR_Core {
         $print_format = get_post_meta($event_id, '_pquick_print_format', true) ?: '0.75';
         $print_fmt_val = floatval($print_format);
 
+        // חישוב מדויק של יחס המטרה הפיזית
         $plane_width = 1;
         $plane_height = $print_fmt_val > 0 ? (1 / $print_fmt_val) : 1.333;
         ?>
@@ -1296,26 +1344,26 @@ class Pquick_AR_Core {
                 #ar-container { width: 100vw; height: 100dvh; position: absolute; top: 0; left: 0; z-index: 1; display: block; }
                 video { object-fit: cover !important; width: 100vw !important; height: 100dvh !important; position: absolute !important; top: 0 !important; left: 0 !important; }
                 
-                /* שכבת הממשק הכללית */
                 #scanner-ui { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99999; pointer-events: none; }
                 .pointer-auto { pointer-events: auto; cursor: pointer; }
                 
-                /* הלוגו - מיקום ימני קשיח, עיצוב פשוט וישיר כמו באפליקציית האורח */
                 #logo-wrapper { position: absolute; top: max(20px, env(safe-area-inset-top)); right: 20px; background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); padding: 8px 18px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; min-height: 45px; }
                 #logo-wrapper img { height: 30px; width: auto; display: block; }
                 
-                /* לחצן שיתוף - צד שמאל */
                 #btn-share { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 20px; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border-radius: 50px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; color: white; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: transform 0.1s; }
                 #btn-share:active { transform: scale(0.95); }
                 
-                /* אזור תחתון: סטטוס */
                 #status-wrapper { position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%); width: 100%; max-width: 350px; text-align: center; transition: opacity 0.5s ease; }
                 #status-container { background-color: rgba(0,0,0,0.85); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-radius: 50px; padding: 12px 22px; display: inline-block; box-shadow: 0 10px 30px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); }
                 #status-text { margin: 0; color: #ffffff; font-size: 15px; font-weight: bold; }
                 
-                /* אזור תחתון: לחצן סאונד - העיצוב המקורי הבולט עם ההילה */
                 #btn-unmute { position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); background-color: rgba(0,0,0,0.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 2px solid #ffb800; color: white; font-weight: bold; padding: 12px 25px; border-radius: 50px; font-size: 16px; display: none; align-items: center; justify-content: center; gap: 10px; box-shadow: 0 0 20px rgba(255,184,0,0.5); white-space: nowrap; transition: transform 0.1s; }
                 #btn-unmute:active { transform: translateX(-50%) scale(0.95); }
+
+                /* עיצוב לאנימציית הטעינה של הוידאו */
+                #video-loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: none; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.7); backdrop-filter: blur(5px); padding: 20px 30px; border-radius: 15px; border: 1px solid rgba(255,184,0,0.5); box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+                .spinner { width: 40px; height: 40px; border: 4px solid rgba(255, 255, 255, 0.3); border-radius: 50%; border-top-color: #ffb800; animation: spin 1s ease-in-out infinite; margin-bottom: 10px; }
+                @keyframes spin { to { transform: rotate(360deg); } }
             </style>
         </head>
         <body>
@@ -1333,6 +1381,11 @@ class Pquick_AR_Core {
                     <i class="fa-solid fa-arrow-up-from-bracket text-xl"></i>
                 </button>
 
+                <div id="video-loader">
+                    <div class="spinner"></div>
+                    <p style="color:white; font-weight:bold; margin:0; font-size:14px;">טוען קסם...</p>
+                </div>
+
                 <div id="status-wrapper">
                     <div id="status-container">
                         <p id="status-text"><i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...</p>
@@ -1345,13 +1398,15 @@ class Pquick_AR_Core {
             </div>
 
             <div id="ar-container">
-                <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no; filterMinCF: 0.05; filterBeta: 50; missTolerance: 2;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+                <a-scene mindar-image="imageTargetSrc: <?php echo esc_url($mind_url); ?>; autoStart: true; uiScanning: no; missTolerance: 2;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
                     <a-assets timeout="10000">
                         <video id="ar-video" src="<?php echo esc_url($video_url); ?>" loop crossorigin="anonymous" playsinline webkit-playsinline muted></video>
                     </a-assets>
                     <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
                     <a-entity mindar-image-target="targetIndex: 0" id="target-entity">
-                        <a-entity id="ar-plane" geometry="primitive: plane; width: <?php echo esc_attr($plane_width); ?>; height: <?php echo esc_attr($plane_height); ?>" material="shader: flat; src: #ar-video;" scale="1.01 1.01 1.01" position="0 0 0" rotation="0 0 0"></a-entity>
+                        <a-entity id="ar-plane" geometry="primitive: plane; width: <?php echo esc_attr($plane_width); ?>; height: <?php echo esc_attr($plane_height); ?>" material="shader: flat; src: transparent; transparent: true; opacity: 0;" scale="1.02 1.02 1.02" position="0 0 0.08" rotation="0 0 0"></a-entity>
+                        
+                        <a-entity id="magic-flash" geometry="primitive: plane; width: <?php echo esc_attr($plane_width); ?>; height: <?php echo esc_attr($plane_height); ?>" material="color: #ffffff; shader: flat; transparent: true; opacity: 0;" scale="1.04 1.04 1.04" position="0 0 0.09" animation="property: material.opacity; from: 0.8; to: 0; dur: 800; easing: easeOutQuad; startEvents: start-flash"></a-entity>
                     </a-entity>
                 </a-scene>
             </div>
@@ -1361,15 +1416,22 @@ class Pquick_AR_Core {
                     const targetEntity = document.querySelector('#target-entity');
                     const videoEl = document.querySelector('#ar-video');
                     const arPlane = document.querySelector('#ar-plane');
+                    const magicFlash = document.querySelector('#magic-flash');
+                    
                     const statusWrapper = document.getElementById('status-wrapper');
                     const statusText = document.getElementById('status-text');
                     const btnShare = document.getElementById('btn-share');
                     const btnUnmute = document.getElementById('btn-unmute');
+                    const videoLoader = document.getElementById('video-loader');
                     
                     const targetPlaneAspect = <?php echo $plane_width / $plane_height; ?>;
+                    let isTargetFound = false;
+                    let isVideoPlaying = false;
 
+                    // פרי-לואד ל-S3
                     fetch('<?php echo esc_url($mind_url); ?>', { method: 'HEAD' }).catch(e => console.log('S3 Check'));
 
+                    // אלגוריתם חיתוך וידאו (Object-Fit: Cover) ללא עיוותים
                     const updateVideoMaterial = () => {
                         if (!videoEl.videoWidth) return;
                         const videoAspect = videoEl.videoWidth / videoEl.videoHeight;
@@ -1383,28 +1445,108 @@ class Pquick_AR_Core {
                             repeatY = videoAspect / targetPlaneAspect;
                             offsetY = (1 - repeatY) / 2;
                         }
-                        arPlane.setAttribute('material', `shader: flat; src: #ar-video; repeat: ${repeatX} ${repeatY}; offset: ${offsetX} ${offsetY};`);
+                        
+                        if(arPlane) arPlane.setAttribute('material', `shader: flat; src: #ar-video; repeat: ${repeatX} ${repeatY}; offset: ${offsetX} ${offsetY}; transparent: true; opacity: 0;`);
                     };
 
                     if (videoEl.readyState >= 1) updateVideoMaterial();
                     else videoEl.addEventListener('loadedmetadata', updateVideoMaterial);
 
+                    // טיפול באירועי ניגון של הוידאו
+                    videoEl.addEventListener('playing', () => {
+                        isVideoPlaying = true;
+                        if(isTargetFound) {
+                            if(videoLoader) videoLoader.style.display = 'none';
+                            if(arPlane) arPlane.setAttribute('material', 'opacity', '1'); 
+                            if(btnUnmute) btnUnmute.style.display = 'flex';
+                        }
+                    });
+
+                    videoEl.addEventListener('waiting', () => {
+                        isVideoPlaying = false;
+                        if(isTargetFound && videoLoader) videoLoader.style.display = 'flex';
+                    });
+
+                    let playTimeout; // לטיפול בחסימת אבטחה של דפדפן (אוטופליי)
+                    let gracePeriodTimeout; // "זמן החסד" למניעת איפוס וידאו מעצבן
+
+                    // מאזין לחיצה גלובלי - עוזר לשחרר חסימות אוטופליי במובייל
+                    document.body.addEventListener('click', () => {
+                        if (isTargetFound && !isVideoPlaying) {
+                            videoEl.play().catch(e => console.log(e));
+                        }
+                    });
+
                     if(targetEntity) {
                         targetEntity.addEventListener("targetFound", event => {
-                            statusWrapper.style.opacity = '0';
-                            videoEl.play().catch(e => console.log("Autoplay blocked", e));
-                            btnUnmute.style.display = 'flex';
+                            isTargetFound = true;
+                            
+                            // אם חזרנו לתמונה מהר, נבטל את טיימר האיפוס של זמן החסד!
+                            clearTimeout(gracePeriodTimeout);
+                            
+                            if(statusWrapper) statusWrapper.style.opacity = '0';
+                            
+                            // פידבק חושי
+                            if (navigator.vibrate) navigator.vibrate(50);
+                            
+                            // הבזק קסם
+                            if(magicFlash) {
+                                magicFlash.setAttribute('material', 'opacity', '0.8');
+                                magicFlash.emit('start-flash');
+                            }
+                            
+                            if(isVideoPlaying) {
+                                // אם הוידאו המשיך לנגן ברקע (המשתמש רק הזיז את היד לשניה), נחזיר אותו מיד
+                                if(videoLoader) videoLoader.style.display = 'none';
+                                if(arPlane) arPlane.setAttribute('material', 'opacity', '1'); 
+                                if(btnUnmute) btnUnmute.style.display = 'flex';
+                            } else {
+                                if(videoLoader) videoLoader.style.display = 'flex';
+                                
+                                // כשל חכם: אם הדפדפן (מסך ההצלחה) חסם את הוידאו, נבקש לחיצה
+                                clearTimeout(playTimeout);
+                                playTimeout = setTimeout(() => {
+                                    if(!isVideoPlaying && videoLoader) {
+                                        videoLoader.innerHTML = '<i class="fa-solid fa-play text-4xl text-white mb-2"></i><p style="color:white; font-weight:bold; margin:0; font-size:14px;">לחצו על המסך להפעלה</p>';
+                                        videoLoader.style.cursor = 'pointer';
+                                        videoLoader.style.pointerEvents = 'auto';
+                                    }
+                                }, 1000);
+                            }
+                            
+                            videoEl.play().catch(e => console.warn("Autoplay pending... waiting for user tap", e));
                         });
 
                         targetEntity.addEventListener("targetLost", event => {
-                            statusWrapper.style.opacity = '1';
-                            statusText.innerHTML = '<i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...';
-                            videoEl.pause();
-                            btnUnmute.style.display = 'none';
+                            isTargetFound = false;
+                            clearTimeout(playTimeout);
+                            
+                            if(statusWrapper) statusWrapper.style.opacity = '1';
+                            if(statusText) statusText.innerHTML = '<i class="fa-solid fa-camera animate-pulse text-[#ffb800] mr-2"></i> כוונו לתמונה המודפסת שלכם...';
+                            
+                            if(videoLoader) {
+                                videoLoader.style.display = 'none';
+                                videoLoader.innerHTML = '<div class="spinner"></div><p style="color:white; font-weight:bold; margin:0; font-size:14px;">טוען קסם...</p>';
+                            }
+                            
+                            if(btnUnmute) btnUnmute.style.display = 'none';
+                            
+                            // מעלימים את הוידאו ויזואלית מיד (כדי שלא ירחף ריבוע שחור)
+                            if(arPlane) arPlane.setAttribute('material', 'opacity', '0'); 
+                            if(magicFlash) magicFlash.setAttribute('material', 'opacity', '0');
+                            
+                            // כאן מתחיל "זמן החסד": מחכים 2.5 שניות. 
+                            // אם האורח לא החזיר את המצלמה לתמונה - אז נאפס את הוידאו למשתמש הבא!
+                            gracePeriodTimeout = setTimeout(() => {
+                                videoEl.pause();
+                                videoEl.currentTime = 0;
+                            }, 2500);
                         });
                     }
+                            
+                       
 
-                    // סאונד - שיניתי רק את התכונות הספציפיות כדי לשמור על העיצוב (המסגרת)
+                    // סאונד עם שמירה על קלאס עיצובי
                     btnUnmute.addEventListener('click', () => {
                         videoEl.muted = !videoEl.muted;
                         if(videoEl.muted) {
@@ -1423,7 +1565,7 @@ class Pquick_AR_Core {
                         }
                     });
 
-                    // שיתוף
+                    // שיתוף הוויראליות
                     btnShare.addEventListener('click', async () => {
                         const shareData = {
                             title: 'Pquick AR',
