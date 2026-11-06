@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Pquick AR Core
- * Description: גרסה 21.1.0 - מדידת משפך סריקה, לופ דרך ההדפסה, כרטיס דמו למכירות. חוויית סריקה חדשה: התאמה מדויקת וידאו-הדפסה, מסך פתיחה, מצב Sticky, QR מקומי ואבטחת עמדת מפעיל.
- * Version: 21.1.0
+ * Description: גרסה 21.2.0 - דחיסת וידאו בטלפון לפני העלאה (H.264 720p). מדידת משפך סריקה, לופ דרך ההדפסה, כרטיס דמו למכירות. חוויית סריקה חדשה: התאמה מדויקת וידאו-הדפסה, מסך פתיחה, מצב Sticky, QR מקומי ואבטחת עמדת מפעיל.
+ * Version: 21.2.0
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -991,6 +991,7 @@ class Pquick_AR_Core {
                 inputVideo.addEventListener('change', function(e) {
                     if (this.files && this.files[0]) {
                         selectedVideoFile = this.files[0];
+                        startCompression(selectedVideoFile); // דחיסה ברקע בזמן שהאורח בוחר רגע
                         const videoURL = URL.createObjectURL(selectedVideoFile);
                         videoExtractor.src = videoURL;
                         videoExtractor.load(); // מכריח דפדפני מובייל להתחיל טעינה
@@ -1019,6 +1020,49 @@ class Pquick_AR_Core {
                     selectedVideoFile = null;
                     showStep('step-upload');
                 });
+
+                // --- דחיסת וידאו בטלפון לפני העלאה (H.264 720p, faststart) ---
+                // סרטון אייפון של 50-100MB (HEVC/4K) הופך ל-MP4 של כ-3-5MB שמתנגן בכל טלפון ועולה מהר ב-WiFi של האירוע.
+                // כל כשל/חוסר תמיכה => מעלים את הקובץ המקורי כמו קודם (לא חוסם את האורח).
+                const MEDIABUNNY_URL = 'https://cdn.jsdelivr.net/npm/mediabunny@1.61.6/dist/bundles/mediabunny.min.mjs';
+                let compressPromise = null, compressProgress = 0;
+                const withTimeout = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
+                async function compressVideo(file) {
+                    if (!('VideoEncoder' in window) || !('VideoDecoder' in window)) return null;
+                    const MB = await import(MEDIABUNNY_URL);
+                    if (!(await MB.canEncodeVideo('avc'))) return null;
+                    const input = new MB.Input({ source: new MB.BlobSource(file), formats: MB.ALL_FORMATS });
+                    const output = new MB.Output({ format: new MB.Mp4OutputFormat({ fastStart: 'in-memory' }), target: new MB.BufferTarget() });
+                    const hadAudio = (await input.getAudioTracks()).length > 0;
+                    const conversion = await MB.Conversion.init({
+                        input, output,
+                        video: async (track) => {
+                            const w = await track.getDisplayWidth(), h = await track.getDisplayHeight();
+                            const scale = Math.min(1, 720 / Math.min(w, h));
+                            const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+                            return {
+                                codec: 'avc', width: even(w * scale), height: even(h * scale), fit: 'fill',
+                                bitrate: 2500000,
+                                keyFrameInterval: 1,          // קפיצה מהירה לרגע המודפס ולופ חלק
+                                allowRotationMetadata: false, // "אופים" את הסיבוב לתוך הפיקסלים - אחיד בכל הדפדפנים
+                                forceTranscode: true
+                            };
+                        },
+                        audio: { codec: 'aac' }
+                    });
+                    if (!conversion.isValid) return null;
+                    if (hadAudio && conversion.discardedTracks.some(d => d.track.isAudioTrack())) return null; // לא מוותרים על הסאונד
+                    conversion.onProgress = (p) => { compressProgress = p; };
+                    await conversion.execute();
+                    const buf = output.target.buffer;
+                    if (!buf || buf.byteLength >= file.size) return null;
+                    return new File([buf], 'pquick-video.mp4', { type: 'video/mp4' });
+                }
+                function startCompression(file) {
+                    compressProgress = 0;
+                    compressPromise = withTimeout(compressVideo(file).catch((e) => { console.warn('compression skipped', e); return null; }), 120000);
+                    window.__pquickCompression = compressPromise; // לבדיקות
+                }
 
                 // --- בחירת הרגע הכי חד (שונות לפלסיאן): פריים חד = יותר נקודות מעקב = זיהוי מהיר ויציב ---
                 const seekTo = (t) => new Promise(resolve => {
@@ -1117,6 +1161,24 @@ class Pquick_AR_Core {
                 // שליחה לשרת
                 document.getElementById('btn-submit').addEventListener('click', async () => {
                     showStep('step-loading');
+
+                    // אם הדחיסה עדיין רצה - מחכים לה עם התקדמות (בד"כ כבר הסתיימה בזמן בחירת הרגע)
+                    let videoToUpload = selectedVideoFile;
+                    if (selectedVideoFile && compressPromise) {
+                        const titleEl = document.getElementById('loading-title');
+                        const subEl = document.getElementById('loading-subtitle');
+                        const bar = document.getElementById('upload-progress-bar');
+                        const txt = document.getElementById('upload-progress-text');
+                        titleEl.textContent = 'מכינים את הסרטון...';
+                        subEl.textContent = 'מקטינים אותו כדי שיעלה מהר ויתנגן בכל טלפון';
+                        const tick = setInterval(() => { const pc = Math.round(compressProgress * 100); bar.style.width = pc + '%'; txt.textContent = pc + '%'; }, 200);
+                        const compressed = await compressPromise;
+                        clearInterval(tick);
+                        if (compressed) videoToUpload = compressed;
+                        titleEl.textContent = 'מעלה קבצים...';
+                        subEl.textContent = 'מכין את קסם ה-AR, אנא המתן';
+                        bar.style.width = '0%'; txt.textContent = '0%';
+                    }
                     
                     const formData = new FormData();
                     formData.append('event_id', EVENT_DATA.id);
@@ -1130,7 +1192,7 @@ class Pquick_AR_Core {
                         formData.append('crop_w', videoCropData.w.toFixed(5));
                         formData.append('crop_h', videoCropData.h.toFixed(5));
                     }
-                    if (selectedVideoFile) formData.append('video_file', selectedVideoFile);
+                    if (videoToUpload) formData.append('video_file', videoToUpload);
 
                     const xhr = new XMLHttpRequest();
                     xhr.open('POST', '/wp-json/pquick/v1/upload', true);
