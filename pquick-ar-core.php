@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Pquick AR Core
- * Description: גרסה 21.0.0 - חוויית סריקה חדשה: התאמה מדויקת וידאו-הדפסה, מסך פתיחה, מצב Sticky, QR מקומי ואבטחת עמדת מפעיל.
- * Version: 21.0.0
+ * Description: גרסה 21.1.0 - מדידת משפך סריקה, לופ דרך ההדפסה, כרטיס דמו למכירות. חוויית סריקה חדשה: התאמה מדויקת וידאו-הדפסה, מסך פתיחה, מצב Sticky, QR מקומי ואבטחת עמדת מפעיל.
+ * Version: 21.1.0
  * Author: Pquick AR Expert
  * Text Domain: pquick-ar
  */
@@ -99,6 +99,7 @@ class Pquick_AR_Core {
     public function add_custom_meta_boxes() {
         add_meta_box( 'pquick_event_settings', 'הגדרות אירוע, לוגו ומסגרת', array( $this, 'render_event_settings_box' ), 'pquick_event', 'normal', 'high' );
         add_meta_box( 'pquick_event_qr_operator', 'ניהול ו-QR לאירוע', array( $this, 'render_event_qr_box' ), 'pquick_event', 'side', 'high' );
+        add_meta_box( 'pquick_event_stats', 'ביצועי סריקת AR (משפך)', array( $this, 'render_event_stats_box' ), 'pquick_event', 'normal', 'default' );
     }
 
     public function render_event_settings_box( $post ) {
@@ -107,6 +108,8 @@ class Pquick_AR_Core {
         $print_format = get_post_meta( $post->ID, '_pquick_print_format', true ) ?: '0.75'; 
         $max_copies = get_post_meta( $post->ID, '_pquick_max_copies', true ) ?: '3';
         $global_max_uploads = get_post_meta( $post->ID, '_pquick_global_max_uploads', true ) ?: '';
+        $is_demo = get_post_meta( $post->ID, '_pquick_is_demo', true ) === '1';
+        $contact_whatsapp = get_post_meta( $post->ID, '_pquick_contact_whatsapp', true );
         
         $overlay_url = get_post_meta( $post->ID, '_pquick_overlay_url', true );
         $logo_url = get_post_meta( $post->ID, '_pquick_event_logo', true ); 
@@ -169,6 +172,15 @@ class Pquick_AR_Core {
                     <label for="pquick_global_max_uploads"><strong style="color:#d63638;">מכסת העלאות כוללת לאירוע:</strong></label><br>
                     <span style="font-size: 12px; color: #666;">לאחר כמות זו, המערכת תינעל. השאר ריק ללא הגבלה.</span><br>
                     <input type="number" name="pquick_global_max_uploads" id="pquick_global_max_uploads" value="<?php echo esc_attr( $global_max_uploads ); ?>" min="1" placeholder="לדוגמה: 300" style="width: 100%; margin-top: 5px;">
+                </p>
+                <hr style="margin: 20px 0;">
+                <p>
+                    <label><input type="checkbox" name="pquick_is_demo" value="1" <?php checked( $is_demo ); ?>> <strong>✨ אירוע דמו (כרטיסי דמו למכירות)</strong></label><br>
+                    <span style="font-size: 12px; color: #666;">ההדפסה תצא ככרטיס דמו עם הוראות סריקה, ובסוף הצפייה יוצג ללקוח "רוצים את זה באירוע שלכם?" עם כפתור וואטסאפ.</span>
+                </p>
+                <p>
+                    <label for="pquick_contact_whatsapp"><strong>וואטסאפ לפניות (לכרטיס הדמו):</strong></label><br>
+                    <input type="text" name="pquick_contact_whatsapp" id="pquick_contact_whatsapp" value="<?php echo esc_attr( $contact_whatsapp ); ?>" placeholder="לדוגמה: 972501234567" dir="ltr" style="width: 100%; margin-top: 5px;">
                 </p>
             </div>
         </div>
@@ -253,6 +265,51 @@ class Pquick_AR_Core {
         <?php
     }
 
+    /** שלבי משפך הסריקה (המפתח => תיאור). הסדר כאן הוא סדר התצוגה. */
+    private static $funnel_steps = array(
+        'open'          => 'פתחו את הסורק (סרקו QR)',
+        'start'         => 'לחצו "התחילו"',
+        'camera_ok'     => 'אישרו מצלמה',
+        'found'         => 'התמונה זוהתה ✨',
+        'played'        => 'הסרטון התנגן',
+        'sound_on'      => 'הפעילו סאונד ידנית',
+        'sticky'        => 'איבדו מעקב (עבר לכרטיס צף)',
+        'share'         => 'שיתפו קישור',
+        'save'          => 'שמרו את הסרטון',
+        'camera_denied' => '⚠️ סירבו למצלמה',
+        'no_find_8s'    => '⚠️ לא זוהה תוך 8 שניות',
+        'fallback'      => 'צפו בסרטון במסך מלא (בלי AR)',
+        'demo_cta'      => '💼 דמו: הוצג "רוצים את זה באירוע?"',
+        'lead_whatsapp' => '💼 דמו: לחצו וואטסאפ (ליד!)',
+        'lead_site'     => '💼 דמו: עברו לאתר',
+        'video_only'    => 'צפו בסרטון (AR לא היה מוכן)',
+    );
+
+    public function render_event_stats_box( $post ) {
+        $open = intval( get_post_meta( $post->ID, '_pquick_stat_open', true ) );
+        if ( ! $open ) {
+            echo '<p style="color:#666;">עדיין אין נתונים. הנתונים יופיעו ברגע שאורחים יסרקו את ה-QR שעל ההדפסות.</p>';
+            return;
+        }
+        echo '<table class="widefat striped" style="max-width:640px"><thead><tr><th>שלב</th><th style="text-align:center">כמות</th><th style="text-align:center">% מהפתיחות</th></tr></thead><tbody>';
+        foreach ( self::$funnel_steps as $key => $label ) {
+            $n   = intval( get_post_meta( $post->ID, '_pquick_stat_' . $key, true ) );
+            $pct = $open ? round( $n / $open * 100 ) : 0;
+            $bar = '<div style="background:#ffb800;height:6px;border-radius:3px;width:' . min( 100, $pct ) . '%"></div>';
+            echo '<tr><td>' . esc_html( $label ) . '</td><td style="text-align:center"><strong>' . $n . '</strong></td><td style="text-align:center">' . $pct . '%' . $bar . '</td></tr>';
+        }
+        echo '</tbody></table>';
+
+        $ttf = get_post_meta( $post->ID, '_pquick_ttf', true );
+        if ( is_array( $ttf ) && $ttf ) {
+            sort( $ttf );
+            $median = $ttf[ intval( floor( ( count( $ttf ) - 1 ) / 2 ) ) ];
+            $p90    = $ttf[ intval( floor( ( count( $ttf ) - 1 ) * 0.9 ) ) ];
+            printf( '<p style="margin-top:12px"><strong>זמן עד זיהוי</strong> (מלחיצה על "התחילו"): חציון <strong>%.1f שניות</strong> · 90%% מהאורחים תוך <strong>%.1f שניות</strong> · (%d מדידות)</p>', $median / 1000, $p90 / 1000, count( $ttf ) );
+        }
+        echo '<p style="font-size:12px;color:#666">יעד מומלץ: "התמונה זוהתה" מעל 85% מ"אישרו מצלמה", וחציון זמן זיהוי מתחת ל-2 שניות. אם "לא זוהה תוך 8 שניות" גבוה - בדקו נייר (מט), תאורה וחדות הפריימים.</p>';
+    }
+
     public function render_event_qr_box( $post ) {
         if ( $post->post_status == 'auto-draft' || $post->post_status == 'draft' ) {
             echo '<p style="color: #d63638;">יש לשמור את האירוע כדי ליצור קודי QR וקישורים.</p>'; return;
@@ -312,6 +369,12 @@ class Pquick_AR_Core {
         if ( isset( $_POST['pquick_max_copies'] ) ) update_post_meta( $post_id, '_pquick_max_copies', intval( $_POST['pquick_max_copies'] ) );
         if ( isset( $_POST['pquick_global_max_uploads'] ) ) update_post_meta( $post_id, '_pquick_global_max_uploads', intval( $_POST['pquick_global_max_uploads'] ) );
         if ( isset( $_POST['pquick_overlay_url'] ) ) update_post_meta( $post_id, '_pquick_overlay_url', esc_url_raw( $_POST['pquick_overlay_url'] ) );
+        update_post_meta( $post_id, '_pquick_is_demo', ! empty( $_POST['pquick_is_demo'] ) ? '1' : '' );
+        if ( isset( $_POST['pquick_contact_whatsapp'] ) ) {
+            $wa = preg_replace( '/\D+/', '', sanitize_text_field( wp_unslash( $_POST['pquick_contact_whatsapp'] ) ) );
+            if ( strpos( $wa, '0' ) === 0 ) $wa = '972' . substr( $wa, 1 ); // 050... -> 97250...
+            update_post_meta( $post_id, '_pquick_contact_whatsapp', $wa );
+        }
         if ( isset( $_POST['pquick_event_logo'] ) ) update_post_meta( $post_id, '_pquick_event_logo', esc_url_raw( $_POST['pquick_event_logo'] ) );
         
         if ( isset( $_POST['pquick_photo_w'] ) ) update_post_meta( $post_id, '_pquick_photo_w', floatval( $_POST['pquick_photo_w'] ) );
@@ -377,7 +440,55 @@ class Pquick_AR_Core {
         register_rest_route( 'pquick/v1', '/upload', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'handle_guest_upload' ), 'permission_callback' => '__return_true' ) );
         register_rest_route( 'pquick/v1', '/event-media/(?P<event_id>\d+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'get_event_media' ), 'permission_callback' => array( $this, 'check_event_media_permission' ) ) );
         register_rest_route( 'pquick/v1', '/print/(?P<media_id>\d+)', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'update_print_status' ), 'permission_callback' => array( $this, 'check_print_permission' ) ) );
+        register_rest_route( 'pquick/v1', '/track', array( 'methods' => WP_REST_Server::CREATABLE, 'callback' => array( $this, 'handle_track' ), 'permission_callback' => '__return_true' ) );
         register_rest_route( 'pquick/v1', '/ar-status/(?P<media_id>\d+)', array( 'methods' => WP_REST_Server::READABLE, 'callback' => array( $this, 'get_ar_status' ), 'permission_callback' => '__return_true' ) );
+    }
+
+    /**
+     * קליטת אירוע משפך אנונימי מהסורק. מונה מצטבר על האירוע (ללא מידע אישי).
+     * מניעת ניפוח: אותו שלב מאותה כתובת IP לאותה מדיה נספר פעם אחת ל-30 דקות.
+     */
+    public function handle_track( WP_REST_Request $request ) {
+        $params   = $request->get_json_params();
+        if ( ! is_array( $params ) ) $params = $request->get_params();
+        $media_id = intval( $params['media_id'] ?? 0 );
+        $step     = sanitize_key( $params['step'] ?? '' );
+        if ( ! $media_id || ! isset( self::$funnel_steps[ $step ] ) || get_post_type( $media_id ) !== 'pquick_media' ) {
+            return new WP_REST_Response( null, 204 );
+        }
+        $event_id = intval( get_post_meta( $media_id, '_pquick_parent_event', true ) );
+        if ( ! $event_id ) return new WP_REST_Response( null, 204 );
+
+        $ip    = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+        $guard = 'pquick_trk_' . md5( $ip . '|' . $media_id . '|' . $step );
+        if ( get_transient( $guard ) ) return new WP_REST_Response( null, 204 );
+        set_transient( $guard, 1, 30 * MINUTE_IN_SECONDS );
+
+        $this->increment_meta( $event_id, '_pquick_stat_' . $step );
+        $this->increment_meta( $media_id, '_pquick_stat_' . $step );
+
+        if ( $step === 'found' && isset( $params['ms'] ) ) {
+            $ms = intval( $params['ms'] );
+            if ( $ms > 0 && $ms < 120000 ) {
+                $ttf = get_post_meta( $event_id, '_pquick_ttf', true );
+                if ( ! is_array( $ttf ) ) $ttf = array();
+                $ttf[] = $ms;
+                if ( count( $ttf ) > 1000 ) $ttf = array_slice( $ttf, -1000 );
+                update_post_meta( $event_id, '_pquick_ttf', $ttf );
+            }
+        }
+        return new WP_REST_Response( null, 204 );
+    }
+
+    /** הגדלה אטומית של מונה ב-postmeta (בטוח גם כשהרבה אורחים סורקים במקביל). */
+    private function increment_meta( $post_id, $key ) {
+        global $wpdb;
+        $updated = $wpdb->query( $wpdb->prepare(
+            "UPDATE {$wpdb->postmeta} SET meta_value = meta_value + 1 WHERE post_id = %d AND meta_key = %s",
+            $post_id, $key
+        ) );
+        if ( ! $updated ) add_post_meta( $post_id, $key, 1, true );
+        wp_cache_delete( $post_id, 'post_meta' );
     }
 
     public function check_event_media_permission( WP_REST_Request $request ) {
@@ -686,6 +797,15 @@ class Pquick_AR_Core {
                                 <p class="text-sm text-gray-500">לחצו כאן (עד 15 שניות)</p>
                             </div>
                             <input type="file" id="input-video" accept="video/*">
+                        </div>
+                        <div class="bg-pquick-light rounded-xl p-4 border border-gray-100 text-right">
+                            <p class="font-bold text-sm mb-2"><i class="fa-solid fa-lightbulb text-pquick-orange ml-1"></i> טיפים לסרטון שיתעורר לחיים בגדול:</p>
+                            <ul class="text-sm text-gray-600 space-y-1">
+                                <li>⏱️ <strong>5-10 שניות</strong> מספיקות</li>
+                                <li>🤳 <strong>החזיקו את הטלפון יציב</strong> - שהאנשים יזוזו, לא המצלמה</li>
+                                <li>🎉 נפנוף, צחוק, חיבוק, הרמת כוסית - <strong>תנועה = קסם</strong></li>
+                                <li>💡 צלמו באזור מואר, פנים קרובות למצלמה</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
@@ -1154,6 +1274,7 @@ class Pquick_AR_Core {
             const OVERLAY_URL = "<?php echo esc_js($overlay_url); ?>";
             const LAYOUT = { w: <?php echo floatval($photo_w); ?>, h: <?php echo floatval($photo_h); ?>, t: <?php echo floatval($photo_t); ?>, l: <?php echo floatval($photo_l); ?> };
             const LOGO_URL = "<?php echo esc_js($logo_url); ?>";
+            const IS_DEMO = <?php echo get_post_meta( $event_id, '_pquick_is_demo', true ) === '1' ? 'true' : 'false'; ?>;
             const OPERATOR_KEY = new URLSearchParams(window.location.search).get('key') || '';
             const API_HEADERS = { 'X-Pquick-Key': OPERATOR_KEY };
 
@@ -1412,6 +1533,72 @@ class Pquick_AR_Core {
                 });
             }
 
+            // --- כרטיס דמו למכירות: התמונה למעלה, ומתחתיה הסבר קצר ו-QR גדול ---
+            // 1800x2700 = כרטיס 10x15 ס"מ ב-450DPI
+            function wrapLines(ctx, text, maxW) {
+                const words = text.split(' '), lines = []; let line = '';
+                words.forEach(w => { const t = line ? line + ' ' + w : w; if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; } else line = t; });
+                if (line) lines.push(line);
+                return lines;
+            }
+            async function generateDemoCard(photoUrl, qrText) {
+                try { await document.fonts.ready; } catch (e) {}
+                const W = 1800, H = 2700, pad = 100;
+                const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+
+                const sep = photoUrl.includes('?') ? '&' : '?';
+                const photo = await loadImage(photoUrl + sep + 't=' + Date.now());
+                const aspect = photo.width / photo.height;
+                const maxW = W - pad * 2, maxH = 1780;
+                let pw = maxW, ph = pw / aspect;
+                if (ph > maxH) { ph = maxH; pw = ph * aspect; }
+                const px = (W - pw) / 2, py = pad;
+                ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 10;
+                ctx.fillStyle = '#fff'; ctx.fillRect(px, py, pw, ph); ctx.restore();
+                ctx.drawImage(photo, px, py, pw, ph);
+
+                // מתחת לתמונה: QR גדול משמאל, הסבר קצר מימין
+                const top = py + ph + 80;
+                const qrSize = Math.min(560, H - top - pad);
+                await drawQRCode(ctx, qrText, pad - 20, top, qrSize);
+
+                ctx.direction = 'rtl'; ctx.textAlign = 'right';
+                const textRight = W - pad, textW = W - pad * 2 - qrSize - 40;
+                let y = top + 95;
+                ctx.fillStyle = '#454857'; ctx.font = 'bold 104px Alef, Arial, sans-serif';
+                ctx.fillText('התמונה הזאת חיה ✨', textRight, y);
+                y += 90;
+                ctx.font = '54px Alef, Arial, sans-serif'; ctx.fillStyle = '#5b5f70';
+                y += 10;
+                ['סרקו את הקוד עם המצלמה', 'לחצו "התחילו"', 'כוונו את הטלפון אל התמונה'].forEach((line, i) => {
+                    // עיגול כתום עם מספר (בלי בעיות כיווניות של "1." בטקסט עברי)
+                    const r = 30, cx = textRight - r, cy = y - 18;
+                    ctx.fillStyle = '#ffb800'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#454857'; ctx.font = 'bold 40px Alef, Arial, sans-serif'; ctx.textAlign = 'center';
+                    ctx.fillText(String(i + 1), cx, cy + 14);
+                    ctx.textAlign = 'right'; ctx.font = '52px Alef, Arial, sans-serif'; ctx.fillStyle = '#5b5f70';
+                    wrapLines(ctx, line, textW - r * 2 - 24).forEach(l => { ctx.fillText(l, textRight - r * 2 - 24, y); y += 70; });
+                    y += 14;
+                });
+                y += 20;
+                ctx.fillStyle = '#ffb800'; ctx.font = 'bold 60px Alef, Arial, sans-serif';
+                ctx.fillText('Pquick Events', textRight, Math.min(y + 30, H - pad));
+                if (LOGO_URL) {
+                    try {
+                        const logo = await loadImage(LOGO_URL);
+                        const lh = 110, lw = lh * (logo.width / logo.height || 1);
+                        ctx.drawImage(logo, textRight - Math.min(lw, textW), H - pad - lh, Math.min(lw, textW), lh * Math.min(1, textW / lw));
+                    } catch (e) {}
+                }
+                return canvas.toDataURL('image/jpeg', 0.95);
+            }
+            // נקודת כניסה אחת להדפסה עם QR: כרטיס דמו או הדפסה רגילה עם המסגרת
+            function buildPrintImage(photoUrl, qrText) {
+                return IS_DEMO ? generateDemoCard(photoUrl, qrText) : generateMergedDataURL(photoUrl, qrText);
+            }
+
             window.downloadSingle = async function(id, imageUrl, btnElement) {
                 const originalHtml = btnElement.innerHTML;
                 btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
@@ -1448,7 +1635,7 @@ class Pquick_AR_Core {
                     progressBar.style.width = `${(count/itemsToDownload.length)*100}%`;
                     try {
                         const qrUrlText = generateQRCodeLink(item.id);
-                        const dataUrl = await generateMergedDataURL(item.image, qrUrlText);
+                        const dataUrl = await buildPrintImage(item.image, qrUrlText);
                         const base64Data = dataUrl.split(',')[1];
                         folder.file(`Pquick_Photo_${item.id}.jpg`, base64Data, {base64: true});
                     } catch(e) { console.error("Failed to merge image", item.id); }
@@ -1466,7 +1653,7 @@ class Pquick_AR_Core {
             window.printItem = async function(id, imageUrl) {
                 try {
                     const qrUrl = generateQRCodeLink(id);
-                    const mergedDataUrl = await generateMergedDataURL(imageUrl, qrUrl);
+                    const mergedDataUrl = await buildPrintImage(imageUrl, qrUrl);
                     
                     const printWindow = window.open('', '_blank');
                     if(!printWindow) {
@@ -1577,6 +1764,9 @@ class Pquick_AR_Core {
         if ( isset( $_GET['miss'] ) ) $tracking['missTolerance'] = max( 1, intval( $_GET['miss'] ) );
 
         $has_target = ! empty( $mind_url );
+        $is_demo    = get_post_meta( $event_id, '_pquick_is_demo', true ) === '1';
+        $wa_number  = get_post_meta( $event_id, '_pquick_contact_whatsapp', true );
+        $wa_link    = $wa_number ? 'https://wa.me/' . $wa_number . '?text=' . rawurlencode( 'היי! ראיתי את התמונה שמתעוררת לחיים ✨ אשמח לשמוע על זה לאירוע שלי' ) : '';
         ?>
         <!DOCTYPE html>
         <html lang="he" dir="rtl">
@@ -1665,6 +1855,15 @@ class Pquick_AR_Core {
 
                 #toast { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 18px 26px; border-radius: 16px; text-align: center; font-weight: bold; max-width: 86vw; }
 
+                #demo-cta { position: absolute; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); border-radius: 22px; padding: 22px 20px 18px; text-align: center; background: rgba(20,21,27,0.88);
+                             transform: translateY(130%); transition: transform .5s cubic-bezier(.2,1.2,.4,1); pointer-events: auto; z-index: 5; }
+                #demo-cta.show { transform: translateY(0); }
+                #demo-cta h2 { margin: 0 0 6px; font-size: 21px; }
+                #demo-cta p { margin: 0 0 16px; font-size: 14px; color: rgba(255,255,255,0.75); }
+                #demo-cta .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; border-radius: 50px; font-size: 17px; text-decoration: none; margin-top: 8px; }
+                #demo-cta-wa { background: #25D366; color: #fff; }
+                #demo-cta-site { background: rgba(255,255,255,0.12); color: #fff; }
+                #demo-cta-close { position: absolute; top: 10px; left: 12px; background: none; font-size: 18px; color: rgba(255,255,255,0.6); width: 32px; height: 32px; }
                 #promo { position: absolute; top: max(16px, env(safe-area-inset-top)); left: 16px; padding: 0 14px; height: 44px; border-radius: 50px; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #fff; text-decoration: none; pointer-events: auto; }
             </style>
         </head>
@@ -1711,6 +1910,17 @@ class Pquick_AR_Core {
 
                 <div id="toast" class="glass hidden"></div>
 
+                <?php if ( $is_demo ): ?>
+                <!-- כרטיס דמו: קריאה לפעולה אחרי הצפייה הראשונה -->
+                <div id="demo-cta" class="glass">
+                    <button id="demo-cta-close" class="btn" aria-label="סגירה">✕</button>
+                    <h2>רוצים את הקסם הזה באירוע שלכם? ✨</h2>
+                    <p>כל אורח מקבל תמונה מודפסת שמתעוררת לחיים - בלי אפליקציה.</p>
+                    <?php if ( $wa_link ): ?><a id="demo-cta-wa" class="btn" href="<?php echo esc_url( $wa_link ); ?>" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp"></i> דברו איתנו בוואטסאפ</a><?php endif; ?>
+                    <a id="demo-cta-site" class="btn" href="https://pquick.co.il/events/" target="_blank" rel="noopener">לפרטים באתר</a>
+                </div>
+                <?php endif; ?>
+
                 <div id="action-bar" class="off">
                     <button id="btn-sound" class="btn glass"><i class="fa-solid fa-volume-xmark"></i></button>
                     <button id="btn-share" class="btn glass"><i class="fa-solid fa-arrow-up-from-bracket"></i> שתפו</button>
@@ -1719,7 +1929,7 @@ class Pquick_AR_Core {
             </div>
 
             <!-- וידאו התוכן (משמש גם כטקסטורה ב-AR וגם לכרטיס הצף) -->
-            <video id="ar-video" src="<?php echo esc_url($video_url); ?>" loop crossorigin="anonymous" playsinline webkit-playsinline muted preload="auto" style="display:none"></video>
+            <video id="ar-video" src="<?php echo esc_url($video_url); ?>" crossorigin="anonymous" playsinline webkit-playsinline muted preload="auto" style="display:none"></video>
 
             <?php if ( $has_target ): ?>
             <div id="ar-container">
@@ -1747,6 +1957,7 @@ class Pquick_AR_Core {
                     hasTarget: <?php echo $has_target ? 'true' : 'false'; ?>,
                     arReady: <?php echo ! empty( $status['ready'] ) ? 'true' : 'false'; ?>,
                     statusUrl: <?php echo wp_json_encode( rest_url( 'pquick/v1/ar-status/' . $media_id ) ); ?>,
+                    trackUrl: <?php echo wp_json_encode( rest_url( 'pquick/v1/track' ) ); ?>,
                     frameTime: <?php echo floatval( $frame_time ); ?>,
                     crop: <?php echo $crop ? wp_json_encode( $crop ) : 'null'; ?>,
                     aspect: <?php echo floatval( $target_aspect ); ?>,
@@ -1768,6 +1979,38 @@ class Pquick_AR_Core {
 
                 const showToast = (html, ms = 2500) => { toast.innerHTML = html; toast.classList.remove('hidden'); clearTimeout(showToast._t); showToast._t = setTimeout(() => toast.classList.add('hidden'), ms); };
                 const haptic = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} };
+
+                // ---------- מדידה (אנונימית): משפך הסריקה. כל שלב נשלח פעם אחת לכל צפייה ----------
+                const sentSteps = new Set();
+                let startTs = performance.now();
+                const track = (step, extra) => {
+                    if (sentSteps.has(step)) return;
+                    sentSteps.add(step);
+                    const body = JSON.stringify(Object.assign({ media_id: CFG.mediaId, step }, extra || {}));
+                    try {
+                        if (navigator.sendBeacon && navigator.sendBeacon(CFG.trackUrl, new Blob([body], { type: 'application/json' }))) return;
+                    } catch (e) {}
+                    fetch(CFG.trackUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+                };
+                track('open');
+
+                // ---------- צליל "נעילה" עדין (תחליף לרטט באייפון) ----------
+                let audioCtx = null;
+                const chime = () => {
+                    if (!audioCtx || videoEl.muted) return;
+                    try {
+                        const now = audioCtx.currentTime;
+                        [[880, 0], [1320, 0.09]].forEach(([f, d]) => {
+                            const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                            o.type = 'sine'; o.frequency.value = f;
+                            g.gain.setValueAtTime(0.0001, now + d);
+                            g.gain.exponentialRampToValueAtTime(0.18, now + d + 0.02);
+                            g.gain.exponentialRampToValueAtTime(0.0001, now + d + 0.45);
+                            o.connect(g).connect(audioCtx.destination);
+                            o.start(now + d); o.stop(now + d + 0.5);
+                        });
+                    } catch (e) {}
+                };
 
                 // ---------- חיתוך הווידאו בדיוק כמו ההדפסה ----------
                 const getCrop = () => {
@@ -1803,6 +2046,29 @@ class Pquick_AR_Core {
                     requestAnimationFrame(step);
                 };
 
+                // ---------- "התמונה המודפסת" כשכבה: posterAlpha משותף ל-AR ולכרטיס הצף ----------
+                // 1 = רואים את הפריים המודפס, 0 = רואים את הווידאו החי
+                let posterAlpha = 1, posterTweenToken = null;
+                const tweenPoster = (to, dur = 400) => {
+                    const from = posterAlpha, t0 = performance.now(), token = {};
+                    posterTweenToken = token;
+                    const step = (now) => {
+                        if (posterTweenToken !== token) return;
+                        const k = Math.min(1, (now - t0) / dur);
+                        posterAlpha = from + (to - from) * (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
+                        if (k < 1) requestAnimationFrame(step);
+                    };
+                    requestAnimationFrame(step);
+                };
+                // סנכרון כל פריים: שקיפות התמונה ב-AR = posterAlpha * נראות משטח הווידאו
+                const syncPoster = () => {
+                    const pp = $('poster-plane'), vp = $('ar-plane');
+                    const pm = pp && pp.getObject3D('mesh'), vm = vp && vp.getObject3D('mesh');
+                    if (pm && vm) { pm.material.opacity = posterAlpha * vm.material.opacity; }
+                    requestAnimationFrame(syncPoster);
+                };
+                if (CFG.hasTarget) requestAnimationFrame(syncPoster);
+
                 let videoTexture = null;
                 function applyVideoTexture() {
                     const plane = $('ar-plane');
@@ -1836,6 +2102,11 @@ class Pquick_AR_Core {
                         const c = getCrop();
                         cardCanvas.getContext('2d').drawImage(videoEl, c.x * videoEl.videoWidth, c.y * videoEl.videoHeight, c.w * videoEl.videoWidth, c.h * videoEl.videoHeight, 0, 0, W, H);
                     }
+                    const posterImg = $('intro-photo');
+                    if (posterAlpha > 0.01 && posterImg && posterImg.complete && posterImg.naturalWidth) {
+                        const ctx = cardCanvas.getContext('2d');
+                        ctx.globalAlpha = posterAlpha; ctx.drawImage(posterImg, 0, 0, W, H); ctx.globalAlpha = 1;
+                    }
                     cardRaf = requestAnimationFrame(drawCard);
                 };
                 const showCard = (mode) => {
@@ -1852,20 +2123,53 @@ class Pquick_AR_Core {
                     // אם הדפדפן חסם ניגון עם סאונד - ננגן מושתק ונציע להפעיל סאונד
                     if (!videoEl.muted) { videoEl.muted = true; updateSoundBtn(); return videoEl.play().catch(() => {}); }
                 });
+                let loopingBack = false;
                 videoEl.addEventListener('playing', () => {
                     // מתעלמים מהניגון הקצר של שחרור הסאונד - רק ניגון "אמיתי" אחרי זיהוי/כרטיס
-                    if (!firstPlayDone && (everFound || cardMode)) {
-                        firstPlayDone = true;
-                        // התמונה ה"קפואה" נמסה לתוך הווידאו שמתחיל לזוז - רגע ה"וואו"
-                        setTimeout(() => fadeTo($('poster-plane'), 0, 600), 120);
-                    }
+                    if (!(everFound || cardMode)) return;
+                    if (!firstPlayDone) { firstPlayDone = true; track('played'); }
+                    // התמונה ה"קפואה" נמסה לתוך הווידאו שמתחיל לזוז - רגע ה"וואו"
+                    if (posterAlpha > 0.01) setTimeout(() => tweenPoster(0, 600), 120);
+                });
+
+                // לופ "דרך ההדפסה": לקראת הסוף הווידאו נמס חזרה לתמונה המודפסת, ואז מתעורר שוב.
+                // אין קפיצה חדה מהסוף להתחלה - כל לופ נראה כמו עוד "התעוררות" של התמונה.
+                const restartPoint = () => (videoEl.duration && videoEl.duration - CFG.frameTime >= 2) ? CFG.frameTime : 0;
+                videoEl.addEventListener('timeupdate', () => {
+                    if (!firstPlayDone || loopingBack || !videoEl.duration) return;
+                    if (videoEl.currentTime >= videoEl.duration - 0.5) { loopingBack = true; tweenPoster(1, 450); }
+                });
+                // דמו: אחרי הצפייה הראשונה (או 12 שניות) - "רוצים את זה באירוע שלכם?"
+                const demoCta = $('demo-cta');
+                let demoShown = false;
+                const showDemoCta = () => {
+                    if (!demoCta || demoShown) return;
+                    demoShown = true;
+                    actionBar.classList.add('off');
+                    demoCta.classList.add('show');
+                    track('demo_cta');
+                };
+                if (demoCta) {
+                    $('demo-cta-close').addEventListener('click', () => { demoCta.classList.remove('show'); actionBar.classList.remove('off'); });
+                    const wa = $('demo-cta-wa'); if (wa) wa.addEventListener('click', () => track('lead_whatsapp'));
+                    $('demo-cta-site').addEventListener('click', () => track('lead_site'));
+                    videoEl.addEventListener('playing', () => { if (everFound || cardMode) setTimeout(showDemoCta, 12000); }, { once: false });
+                }
+
+                videoEl.addEventListener('ended', () => {
+                    if (firstPlayDone) setTimeout(showDemoCta, 1200);
+                    setTimeout(() => {
+                        try { videoEl.currentTime = restartPoint(); } catch (e) {}
+                        loopingBack = false;
+                        if (targetVisible || cardMode) playVideo();
+                    }, 350); // רגע קצר שבו רואים את התמונה ה"קפואה"
                 });
 
                 const updateSoundBtn = () => {
                     btnSound.classList.toggle('on', !videoEl.muted);
                     btnSound.innerHTML = videoEl.muted ? '<i class="fa-solid fa-volume-xmark"></i>' : '<i class="fa-solid fa-volume-high"></i>';
                 };
-                btnSound.addEventListener('click', () => { videoEl.muted = !videoEl.muted; updateSoundBtn(); if (!videoEl.muted) playVideo(); });
+                btnSound.addEventListener('click', () => { videoEl.muted = !videoEl.muted; updateSoundBtn(); if (!videoEl.muted) { playVideo(); track('sound_on'); } });
 
                 // ---------- רמזים מתחלפים ----------
                 const HINTS = [
@@ -1884,7 +2188,7 @@ class Pquick_AR_Core {
                         setTimeout(() => { hint.textContent = HINTS[i]; hint.style.opacity = 1; }, 250);
                     }, 3200);
                     clearTimeout(fallbackTimer);
-                    fallbackTimer = setTimeout(() => { if (!targetVisible) btnFallback.classList.remove('hidden'); }, CFG.fallbackAfterMs);
+                    fallbackTimer = setTimeout(() => { if (!targetVisible && !everFound) { btnFallback.classList.remove('hidden'); track('no_find_8s'); } }, CFG.fallbackAfterMs);
                 };
 
                 const enterScanning = () => {
@@ -1895,6 +2199,7 @@ class Pquick_AR_Core {
                 };
 
                 btnFallback.addEventListener('click', () => {
+                    track('fallback');
                     btnFallback.classList.add('hidden');
                     scanFrame.classList.add('locked');
                     hintWrapper.style.opacity = 0;
@@ -1916,7 +2221,8 @@ class Pquick_AR_Core {
                         everFound = true;
                         haptic([20, 40, 30]);
                         // הצגה מיידית של התמונה עצמה צמודה להדפסה, ואז הווידאו "מתעורר"
-                        fadeTo($('poster-plane'), firstPlayDone ? 0 : 1, 220);
+                        track('found', { ms: Math.round(performance.now() - startTs) });
+                        chime();
                     }
                     fadeTo($('ar-plane'), 1, 250);
                     actionBar.classList.remove('off');
@@ -1930,8 +2236,7 @@ class Pquick_AR_Core {
                     stickyTimer = setTimeout(() => {
                         if (targetVisible) return;
                         fadeTo($('ar-plane'), 0, 200);
-                        fadeTo($('poster-plane'), 0, 200);
-                        if (firstPlayDone || !videoEl.paused) showCard('sticky'); // הווידאו ממשיך לנגן בכרטיס צף
+                        if (firstPlayDone || !videoEl.paused) { showCard('sticky'); track('sticky'); } // הווידאו ממשיך לנגן בכרטיס צף
                         else enterScanning();
                     }, CFG.stickyAfterMs);
                 };
@@ -1951,7 +2256,9 @@ class Pquick_AR_Core {
                     const sceneEl = document.querySelector('a-scene');
                     const go = async () => {
                         const sys = sceneEl.systems['mindar-image-system'];
+                        sceneEl.addEventListener('arReady', () => track('camera_ok'));
                         sceneEl.addEventListener('arError', () => {
+                            track('camera_denied');
                             showToast('<i class="fa-solid fa-camera-slash"></i><br>לא קיבלנו גישה למצלמה.<br><span style="font-weight:normal;font-size:13px">אפשרו גישה בהגדרות הדפדפן, או צפו בסרטון עכשיו.</span>', 5000);
                             btnFallback.classList.remove('hidden');
                             hintWrapper.classList.remove('hidden');
@@ -1969,11 +2276,14 @@ class Pquick_AR_Core {
                 btnStart.addEventListener('click', () => {
                     if (started || btnStart.disabled) return;
                     started = true;
+                    startTs = performance.now();
+                    track('start');
+                    try { const AC = window.AudioContext || window.webkitAudioContext; if (AC) { audioCtx = new AC(); audioCtx.resume(); } } catch (e) {}
                     unlockAudio();
                     intro.classList.add('fade-out');
                     setTimeout(() => intro.classList.add('hidden'), 450);
                     if (CFG.hasTarget) startAR();
-                    else { showCard('full'); actionBar.classList.remove('off'); videoEl.muted = false; seekToFrame(); playVideo(); }
+                    else { track('video_only'); showCard('full'); actionBar.classList.remove('off'); videoEl.muted = false; seekToFrame(); playVideo(); }
                 });
 
                 // ---------- המתנה עד שקובץ ה-AR מוכן (מניעת "מצלמה שלא מזהה כלום") ----------
@@ -2009,12 +2319,14 @@ class Pquick_AR_Core {
 
                 // ---------- שיתוף ושמירה (לולאה ויראלית) ----------
                 btnShare.addEventListener('click', async () => {
+                    track('share');
                     const shareData = { title: 'Pquick AR', text: 'וואו! התמונה מהאירוע התעוררה לחיים ✨ סרקו גם אתם:', url: window.location.href };
                     if (navigator.share) { try { await navigator.share(shareData); } catch (err) {} }
                     else { try { await navigator.clipboard.writeText(window.location.href); showToast('הקישור הועתק ✓'); } catch (e) {} }
                 });
 
                 btnSave.addEventListener('click', async () => {
+                    track('save');
                     const orig = btnSave.innerHTML;
                     btnSave.innerHTML = '<span class="spinner"></span>';
                     try {
